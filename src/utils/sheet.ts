@@ -31,7 +31,11 @@ export function rememberSheetIdFromLocation(): void {
   } catch {}
 }
 
+// 아티팩트 미리보기는 외부 사이트 접속이 막혀 있어서 시트 없이 '이 기기 기록' 모드로 동작
+const IS_ARTIFACT_PREVIEW = import.meta.env.MODE === 'artifact';
+
 export function getSheetId(): string | null {
+  if (IS_ARTIFACT_PREVIEW) return null;
   try {
     const saved = localStorage.getItem(SHEET_ID_KEY);
     if (saved && ID_PATTERN.test(saved)) return saved;
