@@ -24,6 +24,7 @@ interface TeacherPanelProps {
   onClose: () => void;
   sheetId: string | null;
   onConnectSheet: (id: string) => Promise<{ ok: boolean; message: string }>;
+  onTestSheetSave: () => Promise<{ ok: boolean; message: string }>;
   onDisconnectSheet: () => void;
   quizTitle: string;
   questions: QuizQuestion[];
@@ -51,6 +52,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   onClose,
   sheetId,
   onConnectSheet,
+  onTestSheetSave,
   onDisconnectSheet,
   quizTitle,
   questions,
@@ -65,6 +67,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
   const [urlInput, setUrlInput] = useState('');
   const [connectMsg, setConnectMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isSaveTesting, setIsSaveTesting] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   const [csvMsg, setCsvMsg] = useState<string | null>(null);
 
@@ -90,6 +93,14 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
     setIsConnecting(false);
     setConnectMsg({ ok: result.ok, text: result.message });
     if (result.ok) setUrlInput('');
+  };
+
+  const handleTestSave = async () => {
+    setIsSaveTesting(true);
+    setConnectMsg(null);
+    const result = await onTestSheetSave();
+    setIsSaveTesting(false);
+    setConnectMsg({ ok: result.ok, text: result.message });
   };
 
   const handleCopyCode = () => {
@@ -179,6 +190,12 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
                 {codeCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{codeCopied ? '복사됨!' : '시트용 스크립트 코드 복사'}</span>
               </button>
+              {sheetId && (
+                <button onClick={handleTestSave} disabled={isSaveTesting} className={`${smallBtn} bg-white`}>
+                  {isSaveTesting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <span>🧪</span>}
+                  <span>시트 저장 테스트</span>
+                </button>
+              )}
               {sheetId && (
                 <button
                   onClick={() => {

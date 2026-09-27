@@ -10,7 +10,7 @@ export const TEACHER_PIN = '6666';
  * 구글 시트 웹 앱 ID (https://script.google.com/macros/s/<여기>/exec 의 <여기> 부분).
  * 비워 두어도 선생님 메뉴에서 연결하면 수업용 QR에 함께 담겨 학생들에게 전달돼요.
  */
-export const DEFAULT_SHEET_ID = '';
+export const DEFAULT_SHEET_ID = 'AKfycbzl0xU7Zp-J4htUUxAaYzxH6eWIXQYQbqakwTTL5i5X-WUo9bFOyxpELUVF14oTXXkg';
 
 /** 학생 플레이 시간 (초) */
 export const STUDENT_TIME_LIMIT = 300;

@@ -915,6 +915,33 @@ export default function App() {
     }
   };
 
+  // 선생님용: 기록 저장 → 응답(랭킹) 받기까지 한 번에 확인.
+  // 단원 이름을 따로 써서 반 랭킹에는 섞이지 않음
+  const handleTestSheetSave = async () => {
+    const id = sheetIdRef.current;
+    if (!id) return { ok: false, message: '먼저 구글 시트를 연결해 주세요.' };
+    try {
+      await submitSheetRecord(id, {
+        nickname: '연결 테스트',
+        chapter: '🧪 연결 테스트',
+        score: 0,
+        correctCount: 0,
+        maxCombo: 0,
+        character: '',
+      });
+      return {
+        ok: true,
+        message: "저장·응답 모두 정상이에요! 시트 '기록' 탭 맨 아래 '연결 테스트' 줄은 지워도 돼요.",
+      };
+    } catch {
+      return {
+        ok: false,
+        message:
+          "응답을 받지 못했어요. 시트 '기록' 탭에 '연결 테스트' 줄이 생겼다면 저장은 된 거예요. 안 생겼다면 배포 설정(액세스: 모든 사용자)을 확인해 주세요.",
+      };
+    }
+  };
+
   const handleDisconnectSheet = () => {
     saveSheetId(null);
     sheetIdRef.current = null;
@@ -1067,6 +1094,7 @@ export default function App() {
         onClose={() => setIsTeacherPanelOpen(false)}
         sheetId={sheetId}
         onConnectSheet={handleConnectSheet}
+        onTestSheetSave={handleTestSheetSave}
         onDisconnectSheet={handleDisconnectSheet}
         quizTitle={quiz.title}
         questions={quiz.questions}
