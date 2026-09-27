@@ -270,7 +270,7 @@ export const TeacherPanel: React.FC<TeacherPanelProps> = ({
               <span className="flex items-center gap-1 text-sm">
                 <Zap className="w-4 h-4 text-amber-500" /> {TEST_TIME_LIMIT}초 테스트
               </span>
-              <span className="text-[10px] text-zinc-500 font-normal">기록이 남지 않아요</span>
+              <span className="text-[10px] text-zinc-500 font-normal">기록 안 남음 · 🔥로 피버 미리보기</span>
             </button>
             <button
               onClick={handleExport}

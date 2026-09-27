@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { FallingItem, Particle, FloatingText, CharacterAction, CharacterSkin } from '../types/game';
 import { HEAD_IMAGES } from '../data/heads';
+import { drawFeverBackdrop, drawFeverOverlay } from './feverEffects';
 import {
   V_WIDTH,
   FLOOR_Y,
@@ -18,7 +19,8 @@ interface PixelCanvasProps {
   playerDirection: 'left' | 'right';
   characterAction: CharacterAction;
   characterSkin?: CharacterSkin;
-  combo?: number;
+  /** 피버타임 시작 후 지난 시간(초). null이면 피버 아님 */
+  feverElapsed: number | null;
   fallingItems: FallingItem[];
   particles: Particle[];
   floatingTexts: FloatingText[];
@@ -44,7 +46,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
   playerDirection,
   characterAction,
   characterSkin = 'giyeong',
-  combo = 0,
+  feverElapsed,
   fallingItems,
   particles,
   floatingTexts,
@@ -88,6 +90,12 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
       // 2. Hand-Drawn Floor Line & Safe Shelter Zones
       drawDoodleFloorWithShelters(ctx, V_WIDTH, FLOOR_Y);
 
+      // 2-1. 피버 효과 (단어 카드 뒤에 깔아서 글씨가 가려지지 않게)
+      if (feverElapsed !== null) {
+        const headY = FLOOR_Y - NECK_FROM_FLOOR - HEAD_MAX_H / 2;
+        drawFeverBackdrop(ctx, characterSkin, feverElapsed, playerX + PLAYER_W / 2, headY);
+      }
+
       // 3. Falling Items (똥 & 단어 카드)
       fallingItems.forEach((item) => {
         if (item.type === 'obstacle') {
@@ -104,7 +112,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
         playerDirection,
         characterAction,
         characterSkin,
-        combo,
+        feverElapsed !== null,
         isInvincible,
         idleTickRef.current
       );
@@ -137,6 +145,9 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
         ctx.restore();
       });
 
+      // 7. 피버 테두리 빛 + 'FEVER TIME!' 글자
+      if (feverElapsed !== null) drawFeverOverlay(ctx, characterSkin, feverElapsed);
+
       ctx.restore();
 
       animFrameIdRef.current = requestAnimationFrame(render);
@@ -153,7 +164,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
     playerDirection,
     characterAction,
     characterSkin,
-    combo,
+    feverElapsed,
     fallingItems,
     particles,
     floatingTexts,
@@ -355,7 +366,7 @@ function drawBigHeadDoodlePlayer(
   dir: 'left' | 'right',
   action: CharacterAction,
   skin: CharacterSkin,
-  combo: number,
+  isFever: boolean,
   isInvincible: boolean,
   idleTick: number
 ) {
@@ -392,15 +403,10 @@ function drawBigHeadDoodlePlayer(
   const headBottom = neckY + HEAD_NECK_OVERLAP;
   const headTop = headBottom - headH;
 
-  // Bakugo Combo Max Explosion Effect (3콤보 이상 시 화려한 폭발 구름 & 빨간 빤짝이)
-  if (skin === 'bakugo' && combo >= 3) {
-    drawComboMaxExplosionEffect(ctx, 0, headTop + headH / 2, idleTick, combo);
-  }
-
   // 1. 몸 (방향에 따라 몸만 좌우 반전)
   ctx.save();
   if (dir === 'left') ctx.scale(-1, 1);
-  drawStickBody(ctx, neckY, action, skin, combo, isRunning, isDamaged, idleTick);
+  drawStickBody(ctx, neckY, action, skin, isFever, isRunning, isDamaged, idleTick);
   ctx.restore();
 
   // 2. 얼굴 (몸 위에 덮어 그림)
@@ -426,7 +432,7 @@ function drawStickBody(
   neckY: number,
   action: CharacterAction,
   skin: CharacterSkin,
-  combo: number,
+  isFever: boolean,
   isRunning: boolean,
   isDamaged: boolean,
   idleTick: number
@@ -448,7 +454,8 @@ function drawStickBody(
 
   // Arms
   const shoulderY = spineTop + 8;
-  if (action === 'happy' || (skin === 'bakugo' && combo >= 3)) {
+  // 바쿠고는 피버 동안 수류탄 장갑 만세
+  if (action === 'happy' || (skin === 'bakugo' && isFever)) {
     // 만세: 큰 얼굴에 가리지 않게 옆으로 벌려 올림
     const handX = 22;
     const handY = shoulderY - 8;
@@ -527,108 +534,6 @@ function drawStickBody(
     ctx.lineTo(7, idleBob);
     ctx.stroke();
   }
-}
-
-// ==========================================
-// COMBO MAX EXPLOSION & RED SPARKLE EFFECT
-// ==========================================
-function drawComboMaxExplosionEffect(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  tick: number,
-  combo: number
-) {
-  ctx.save();
-
-  const pulse = Math.sin(tick * 3.5) * 6;
-  const clouds = [
-    { x: -35, y: -20, r: 24 + pulse, color: '#f97316' },
-    { x: 35, y: -20, r: 24 + pulse, color: '#f97316' },
-    { x: -45, y: 10, r: 22 - pulse * 0.5, color: '#ef4444' },
-    { x: 45, y: 10, r: 22 - pulse * 0.5, color: '#ef4444' },
-    { x: 0, y: -45, r: 28 + pulse, color: '#eab308' },
-    { x: -20, y: -40, r: 20, color: '#dc2626' },
-    { x: 20, y: -40, r: 20, color: '#dc2626' },
-  ];
-
-  ctx.globalAlpha = 0.85;
-  clouds.forEach((c) => {
-    ctx.beginPath();
-    ctx.fillStyle = c.color;
-    ctx.arc(cx + c.x, cy + c.y, c.r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#18181b';
-    ctx.lineWidth = 1.6;
-    ctx.stroke();
-  });
-
-  const sparkles = [
-    { x: -55, y: -50, size: 14, color: '#ef4444', rot: tick * 2 },
-    { x: 55, y: -50, size: 14, color: '#ef4444', rot: -tick * 2 },
-    { x: -65, y: 5, size: 11, color: '#facc15', rot: tick * 3 },
-    { x: 65, y: 5, size: 11, color: '#facc15', rot: -tick * 3 },
-    { x: -25, y: -70, size: 13, color: '#f97316', rot: tick * 2.5 },
-    { x: 25, y: -70, size: 13, color: '#f97316', rot: -tick * 2.5 },
-    { x: 0, y: -78, size: 16, color: '#dc2626', rot: tick * 4 },
-  ];
-
-  sparkles.forEach((s) => {
-    ctx.save();
-    ctx.translate(cx + s.x, cy + s.y);
-    ctx.rotate(s.rot);
-    drawCrossSparkle(ctx, 0, 0, s.size, s.color);
-    ctx.restore();
-  });
-
-  for (let i = 0; i < 6; i++) {
-    const angle = (i * Math.PI) / 3 + tick * 2;
-    const dist = 52 + Math.sin(tick * 4 + i) * 12;
-    const sx = cx + Math.cos(angle) * dist;
-    const sy = cy + Math.sin(angle) * dist * 0.7;
-    ctx.fillStyle = i % 2 === 0 ? '#ef4444' : '#facc15';
-    ctx.beginPath();
-    ctx.arc(sx, sy, 3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.save();
-  ctx.fillStyle = '#dc2626';
-  ctx.font = 'bold 12px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(`💥 폭발 ${combo}콤보!`, cx, cy - 88);
-  ctx.restore();
-
-  ctx.restore();
-}
-
-function drawCrossSparkle(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  size: number,
-  color: string
-) {
-  ctx.save();
-  ctx.fillStyle = color;
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 1;
-
-  ctx.beginPath();
-  ctx.moveTo(x, y - size);
-  ctx.quadraticCurveTo(x, y, x + size, y);
-  ctx.quadraticCurveTo(x, y, x, y + size);
-  ctx.quadraticCurveTo(x, y, x - size, y);
-  ctx.quadraticCurveTo(x, y, x, y - size);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.fillStyle = '#ffffff';
-  ctx.beginPath();
-  ctx.arc(x, y, size * 0.25, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
 }
 
 function drawDoodleRectPath(

@@ -19,6 +19,13 @@ interface GameHUDProps {
   showHealAlert: boolean;
   stageAlert?: string | null;
   isTestPlay?: boolean;
+  feverGauge: number;
+  feverMax: number;
+  /** 피버 남은 시간(초). 0이면 피버 아님 */
+  feverRemaining: number;
+  feverDuration: number;
+  /** 선생님 테스트 플레이에서만 보이는 🔥 버튼 */
+  onTestFever: () => void;
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -37,7 +44,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   showHealAlert: _showHealAlert,
   stageAlert,
   isTestPlay = false,
+  feverGauge,
+  feverMax,
+  feverRemaining,
+  feverDuration,
+  onTestFever,
 }) => {
+  const isFever = feverRemaining > 0;
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
   const timeFormatted = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
@@ -96,6 +109,17 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
           {/* Control Buttons */}
           <div className="flex items-center gap-1 border-l border-zinc-300 pl-1.5">
+            {isTestPlay && (
+              <button
+                onClick={onTestFever}
+                disabled={isFever}
+                className="p-1 rounded-lg bg-orange-100 border border-zinc-800 text-xs leading-none active:scale-95 transition-all shadow-[1px_1px_0px_#18181b] disabled:opacity-40"
+                title="피버타임 바로 켜기 (선생님 테스트)"
+                aria-label="피버타임 테스트"
+              >
+                🔥
+              </button>
+            )}
             <button
               onClick={onToggleMute}
               className="p-1 rounded-lg bg-zinc-100 border border-zinc-800 text-zinc-800 hover:bg-zinc-200 active:scale-95 transition-all shadow-[1px_1px_0px_#18181b]"
@@ -142,6 +166,35 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         </div>
       )}
+
+      {/* Fever gauge: 연속 정답으로 차오르고, 꽉 차면 피버타임 동안 줄어듦 */}
+      <div className="mt-1.5 w-full flex justify-center">
+        {isFever ? (
+          <div className="relative w-full max-w-[280px] h-7 rounded-full border-2 border-zinc-900 bg-orange-100 overflow-hidden shadow-[2px_2px_0px_#18181b] animate-pulse">
+            <div
+              className="absolute inset-y-0 left-0 bg-gradient-to-r from-yellow-300 via-orange-400 to-red-500"
+              style={{ width: `${(feverRemaining / feverDuration) * 100}%` }}
+            />
+            <span className="relative z-10 flex h-full items-center justify-center font-doodle font-bold text-sm text-zinc-950">
+              🔥 피버타임! 똥 무적 🔥
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-zinc-800 bg-white/90 shadow-[1px_1px_0px_#18181b]">
+            <span className="font-doodle font-bold text-[11px] text-zinc-700">피버</span>
+            {Array.from({ length: feverMax }).map((_, i) => (
+              <span
+                key={i}
+                className={`text-sm leading-none transition-all duration-150 ${
+                  i < feverGauge ? 'opacity-100 scale-110' : 'opacity-25 grayscale'
+                }`}
+              >
+                🔥
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Stage Alert Notification (1분 단위 똥 증가 알림) */}
       {stageAlert && (

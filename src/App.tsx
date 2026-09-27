@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FallingItem, Particle, FloatingText, CharacterAction, QuizQuestion, CharacterSkin, LeaderboardEntry } from './types/game';
 import { INITIAL_CHAPTERS } from './data/chapters';
-import { STUDENT_TIME_LIMIT, TEST_TIME_LIMIT } from './config';
+import { STUDENT_TIME_LIMIT, TEST_TIME_LIMIT, FEVER_COMBO, FEVER_DURATION } from './config';
 import { V_WIDTH, PLAYER_W, PLAYER_START_X, HITBOX, PLAYER_TEXT_Y } from './data/player';
 import { PixelCanvas } from './components/PixelCanvas';
 import { GameHUD } from './components/GameHUD';
@@ -143,6 +143,10 @@ export default function App() {
   const [playerDirection, setPlayerDirection] = useState<'left' | 'right'>('right');
   const [characterAction, setCharacterAction] = useState<CharacterAction>('idle');
   const [isInvincible, setIsInvincible] = useState(false);
+  // 피버타임: 게이지(연속 정답 수), 남은 시간, 시작 후 지난 시간(효과 그리기용)
+  const [feverGauge, setFeverGauge] = useState(0);
+  const [feverRemaining, setFeverRemaining] = useState(0);
+  const [feverElapsed, setFeverElapsed] = useState<number | null>(null);
   const [screenShake, setScreenShake] = useState(0);
 
   // Input states
@@ -180,6 +184,9 @@ export default function App() {
     particles: [] as Particle[],
     floatingTexts: [] as FloatingText[],
     invincibleTimer: 0,
+    feverGauge: 0,
+    feverTime: 0,
+    feverElapsed: 0,
     shake: 0,
     nextWordSpawn: 0.8,
     nextPoopSpawn: 1.8,
@@ -271,6 +278,9 @@ export default function App() {
     setPlayerDirection('right');
     setCharacterAction('idle');
     setIsInvincible(false);
+    setFeverGauge(0);
+    setFeverRemaining(0);
+    setFeverElapsed(null);
     setScreenShake(0);
     setFallingItems([]);
     setParticles([]);
@@ -302,6 +312,9 @@ export default function App() {
       particles: [],
       floatingTexts: [],
       invincibleTimer: 0,
+      feverGauge: 0,
+      feverTime: 0,
+      feverElapsed: 0,
       shake: 0,
       nextWordSpawn: 0.8,
       nextPoopSpawn: 1.8,
@@ -421,6 +434,21 @@ export default function App() {
           setIsInvincible(true);
         } else {
           setIsInvincible(false);
+        }
+
+        // Fever timer
+        if (state.feverTime > 0) {
+          state.feverTime -= dt;
+          state.feverElapsed += dt;
+          if (state.feverTime <= 0) {
+            state.feverTime = 0;
+            state.feverGauge = 0;
+            setFeverGauge(0);
+            setFeverElapsed(null);
+          } else {
+            setFeverElapsed(state.feverElapsed);
+          }
+          setFeverRemaining(state.feverTime);
         }
 
         // Screen shake decay
@@ -669,6 +697,13 @@ export default function App() {
       setMaxCombo(state.maxCombo);
       setCorrectCount(state.correctCount);
 
+      // 피버 게이지 (피버 중에는 게이지 대신 남은 시간이 흘러감)
+      if (state.feverTime <= 0) {
+        state.feverGauge = Math.min(FEVER_COMBO, state.feverGauge + 1);
+        setFeverGauge(state.feverGauge);
+        if (state.feverGauge >= FEVER_COMBO) startFever(state);
+      }
+
       // Sound & visuals
       soundEngine.playCorrect(newCombo);
       state.action = 'happy';
@@ -711,6 +746,7 @@ export default function App() {
       soundEngine.playWrong();
       state.combo = 0;
       setCombo(0);
+      resetFeverGauge(state);
 
       state.hp = Math.max(0, state.hp - 1);
       setHp(state.hp);
@@ -736,11 +772,16 @@ export default function App() {
       checkZeroElimination(state);
     } else if (item.type === 'obstacle') {
       // 3. POOP HIT (장애물 충돌)
+      if (state.feverTime > 0) {
+        smashPoopInFever(item, state);
+        return;
+      }
       if (state.invincibleTimer > 0) return;
 
       soundEngine.playPoopHit();
       state.combo = 0;
       setCombo(0);
+      resetFeverGauge(state);
 
       state.hp = Math.max(0, state.hp - 1);
       setHp(state.hp);
@@ -781,6 +822,59 @@ export default function App() {
       // Check Zero-Elimination
       checkZeroElimination(state);
     }
+  };
+
+  // ---- 피버타임 ----
+  const startFever = (state: typeof gameStateRef.current) => {
+    state.feverGauge = FEVER_COMBO;
+    state.feverTime = FEVER_DURATION;
+    state.feverElapsed = 0;
+    setFeverGauge(FEVER_COMBO);
+    setFeverRemaining(FEVER_DURATION);
+    setFeverElapsed(0);
+    soundEngine.playFever();
+  };
+
+  const resetFeverGauge = (state: typeof gameStateRef.current) => {
+    if (state.feverTime > 0 || state.feverGauge === 0) return; // 피버 중에는 틀려도 계속
+    state.feverGauge = 0;
+    setFeverGauge(0);
+  };
+
+  // 피버 중 똥: 맞아도 무적, 똥이 '펑' 부서짐
+  const smashPoopInFever = (item: FallingItem, state: typeof gameStateRef.current) => {
+    soundEngine.playPoopSmash();
+    for (let i = 0; i < 10; i++) {
+      state.particles.push({
+        id: particleIdCounter.current++,
+        x: item.x + item.width / 2,
+        y: item.y + item.height / 2,
+        vx: (Math.random() - 0.5) * 260,
+        vy: -80 - Math.random() * 180,
+        size: 4 + Math.random() * 4,
+        color: i % 2 ? '#facc15' : '#fb923c',
+        alpha: 1,
+        life: 0.5 + Math.random() * 0.3,
+        maxLife: 0.8,
+      });
+    }
+    state.floatingTexts.push({
+      id: textIdCounter.current++,
+      text: '💥 무적!',
+      x: item.x + item.width / 2,
+      y: PLAYER_TEXT_Y,
+      color: '#ea580c',
+      size: 22,
+      alpha: 1,
+      life: 0.7,
+    });
+  };
+
+  // 선생님 테스트 플레이: 🔥 버튼으로 바로 피버
+  const handleTestFever = () => {
+    const state = gameStateRef.current;
+    if (!state.isTest || state.screen !== 'playing' || state.feverTime > 0) return;
+    startFever(state);
   };
 
   // Zero-Elimination HP System
@@ -1041,6 +1135,11 @@ export default function App() {
               showHealAlert={showHealAlert}
               stageAlert={stageAlert}
               isTestPlay={isTestPlay}
+              feverGauge={feverGauge}
+              feverMax={FEVER_COMBO}
+              feverRemaining={feverRemaining}
+              feverDuration={FEVER_DURATION}
+              onTestFever={handleTestFever}
             />
 
             {/* Mobile Canvas: 480 x 800 */}
@@ -1049,7 +1148,7 @@ export default function App() {
               playerDirection={playerDirection}
               characterAction={characterAction}
               characterSkin={characterSkin}
-              combo={combo}
+              feverElapsed={feverElapsed}
               fallingItems={fallingItems}
               particles={particles}
               floatingTexts={floatingTexts}

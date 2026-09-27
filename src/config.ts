@@ -17,3 +17,9 @@ export const STUDENT_TIME_LIMIT = 300;
 
 /** 선생님 테스트 플레이 시간 (초) — 기록이 남지 않아요 */
 export const TEST_TIME_LIMIT = 20;
+
+/** 연속 정답 이만큼이면 피버타임 */
+export const FEVER_COMBO = 5;
+
+/** 피버타임 길이 (초) — 이 동안 똥에 맞아도 무적 */
+export const FEVER_DURATION = 5;
