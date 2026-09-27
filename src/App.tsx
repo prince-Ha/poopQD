@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FallingItem, Particle, FloatingText, CharacterAction, QuizQuestion, CharacterSkin, LeaderboardEntry } from './types/game';
 import { INITIAL_CHAPTERS } from './data/chapters';
 import { STUDENT_TIME_LIMIT, TEST_TIME_LIMIT } from './config';
+import { V_WIDTH, PLAYER_W, PLAYER_START_X, HITBOX, PLAYER_TEXT_Y } from './data/player';
 import { PixelCanvas } from './components/PixelCanvas';
 import { GameHUD } from './components/GameHUD';
 import { TouchControls } from './components/TouchControls';
@@ -138,11 +139,7 @@ export default function App() {
   const [currentQuestion, setCurrentQuestion] = useState<QuizQuestion | null>(null);
 
   // Mobile portrait dimensions: 480 x 800
-  const V_WIDTH = 480;
-  const PLAYER_W = 56;
-  const PLAYER_H = 70;
-  const PLAYER_Y = 640;
-  const [playerX, setPlayerX] = useState<number>(212); // center
+  const [playerX, setPlayerX] = useState<number>(PLAYER_START_X);
   const [playerDirection, setPlayerDirection] = useState<'left' | 'right'>('right');
   const [characterAction, setCharacterAction] = useState<CharacterAction>('idle');
   const [isInvincible, setIsInvincible] = useState(false);
@@ -161,7 +158,7 @@ export default function App() {
   const gameStateRef = useRef({
     screen: 'start' as 'start' | 'playing' | 'gameover',
     isPaused: false,
-    playerX: 212,
+    playerX: PLAYER_START_X,
     playerDir: 'right' as 'left' | 'right',
     action: 'idle' as CharacterAction,
     actionTimer: 0,
@@ -270,7 +267,7 @@ export default function App() {
     setShowHealAlert(false);
     setStageAlert(null);
     setIsPaused(false);
-    setPlayerX(212);
+    setPlayerX(PLAYER_START_X);
     setPlayerDirection('right');
     setCharacterAction('idle');
     setIsInvincible(false);
@@ -283,7 +280,7 @@ export default function App() {
     gameStateRef.current = {
       screen: 'playing',
       isPaused: false,
-      playerX: 212,
+      playerX: PLAYER_START_X,
       playerDir: 'right',
       action: 'idle',
       actionTimer: 0,
@@ -475,10 +472,10 @@ export default function App() {
         let survivingItems: FallingItem[] = [];
         let answeredCorrect = false;
         const playerBox = {
-          x: state.playerX + 8,
-          y: PLAYER_Y + 12,
-          w: PLAYER_W - 16,
-          h: PLAYER_H - 12,
+          x: state.playerX + HITBOX.offsetX,
+          y: HITBOX.top,
+          w: HITBOX.width,
+          h: HITBOX.bottom - HITBOX.top,
         };
 
         for (const item of state.items) {
@@ -682,7 +679,7 @@ export default function App() {
         id: textIdCounter.current++,
         text: comboBonus > 0 ? `+${points} (${newCombo}콤보!)` : `+${points} 정답!`,
         x: item.x + item.width / 2,
-        y: PLAYER_Y - 20,
+        y: PLAYER_TEXT_Y,
         color: '#16a34a',
         size: 22,
         alpha: 1,
@@ -728,7 +725,7 @@ export default function App() {
         id: textIdCounter.current++,
         text: '❌ 오답!',
         x: item.x + item.width / 2,
-        y: PLAYER_Y - 20,
+        y: PLAYER_TEXT_Y,
         color: '#dc2626',
         size: 20,
         alpha: 1,
@@ -758,7 +755,7 @@ export default function App() {
         id: textIdCounter.current++,
         text: '💩 앗 똥이다!',
         x: item.x + item.width / 2,
-        y: PLAYER_Y - 20,
+        y: PLAYER_TEXT_Y,
         color: '#92400e',
         size: 21,
         alpha: 1,
@@ -809,7 +806,7 @@ export default function App() {
         id: textIdCounter.current++,
         text: '❤️ 체력 회복! (-500점)',
         x: state.playerX + PLAYER_W / 2,
-        y: PLAYER_Y - 30,
+        y: PLAYER_TEXT_Y - 10,
         color: '#e11d48',
         size: 22,
         alpha: 1,

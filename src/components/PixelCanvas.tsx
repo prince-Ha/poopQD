@@ -1,15 +1,17 @@
 import React, { useRef, useEffect } from 'react';
 import { FallingItem, Particle, FloatingText, CharacterAction, CharacterSkin } from '../types/game';
-import charNormalSrc from '../assets/char_normal.jpg';
-import charAngrySrc from '../assets/char_angry.jpg';
-import giyeongNormalSrc from '../assets/giyeong_normal.jpg';
-import giyeongCrySrc from '../assets/giyeong_cry.jpg';
-import pikaNormalSrc from '../assets/pika_normal.jpg';
-import pikaHellSrc from '../assets/pika_hell.jpg';
-import ganadiNormalSrc from '../assets/ganadi_normal.jpg';
-import ganadiCrySrc from '../assets/ganadi_cry.jpg';
-import saitamaNormalSrc from '../assets/saitama_normal.jpg';
-import saitamaAngrySrc from '../assets/saitama_angry.jpg';
+import { HEAD_IMAGES } from '../data/heads';
+import {
+  V_WIDTH,
+  FLOOR_Y,
+  PLAYER_W,
+  LEG_LEN,
+  SPINE_LEN,
+  NECK_FROM_FLOOR,
+  HEAD_MAX_W,
+  HEAD_MAX_H,
+  HEAD_NECK_OVERLAP,
+} from '../data/player';
 
 interface PixelCanvasProps {
   playerX: number;
@@ -24,92 +26,18 @@ interface PixelCanvasProps {
   screenShake: number;
 }
 
-// Background cutout cache (하얀 배경 투명화 캐시)
-const cutoutCache = new Map<string, HTMLCanvasElement>();
-
-function getCutoutCanvas(img: HTMLImageElement, key: string, threshold = 230): HTMLCanvasElement | null {
-  if (!img.complete || img.naturalWidth === 0) return null;
-  if (cutoutCache.has(key)) return cutoutCache.get(key)!;
-
-  const w = img.naturalWidth;
-  const h = img.naturalHeight;
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  const ctx = c.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return null;
-
-  ctx.drawImage(img, 0, 0);
-  try {
-    const imgData = ctx.getImageData(0, 0, w, h);
-    const d = imgData.data;
-    const visited = new Uint8Array(w * h);
-    const queue: number[] = [];
-
-    // Push all border pixels that are white/near-white
-    for (let x = 0; x < w; x++) {
-      queue.push(x, 0);
-      queue.push(x, h - 1);
-    }
-    for (let y = 0; y < h; y++) {
-      queue.push(0, y);
-      queue.push(w - 1, y);
-    }
-
-    let head = 0;
-    while (head < queue.length) {
-      const qx = queue[head++];
-      const qy = queue[head++];
-      const idx = qy * w + qx;
-      if (visited[idx]) continue;
-      visited[idx] = 1;
-
-      const pIdx = idx * 4;
-      const r = d[pIdx];
-      const g = d[pIdx + 1];
-      const b = d[pIdx + 2];
-
-      if (r >= threshold && g >= threshold && b >= threshold) {
-        d[pIdx + 3] = 0; // Alpha 0 (투명)
-        if (qx > 0 && !visited[idx - 1]) queue.push(qx - 1, qy);
-        if (qx < w - 1 && !visited[idx + 1]) queue.push(qx + 1, qy);
-        if (qy > 0 && !visited[idx - w]) queue.push(qx, qy - 1);
-        if (qy < h - 1 && !visited[idx + w]) queue.push(qx, qy + 1);
-      }
-    }
-    ctx.putImageData(imgData, 0, 0);
-    cutoutCache.set(key, c);
-    return c;
-  } catch {
-    return null;
-  }
+// 얼굴 사진 미리 불러오기 (배경은 이미 투명 PNG)
+function loadImage(src: string): HTMLImageElement {
+  const img = new Image();
+  img.src = src;
+  return img;
 }
 
-// Preload 5 character images
-const giyeongNormalImg = new Image();
-giyeongNormalImg.src = giyeongNormalSrc;
-const giyeongCryImg = new Image();
-giyeongCryImg.src = giyeongCrySrc;
+const HEADS = Object.fromEntries(
+  Object.entries(HEAD_IMAGES).map(([skin, src]) => [skin, { normal: loadImage(src.normal), hit: loadImage(src.hit) }])
+) as Record<CharacterSkin, { normal: HTMLImageElement; hit: HTMLImageElement }>;
 
-const pikaNormalImg = new Image();
-pikaNormalImg.src = pikaNormalSrc;
-const pikaHellImg = new Image();
-pikaHellImg.src = pikaHellSrc;
-
-const ganadiNormalImg = new Image();
-ganadiNormalImg.src = ganadiNormalSrc;
-const ganadiCryImg = new Image();
-ganadiCryImg.src = ganadiCrySrc;
-
-const saitamaNormalImg = new Image();
-saitamaNormalImg.src = saitamaNormalSrc;
-const saitamaAngryImg = new Image();
-saitamaAngryImg.src = saitamaAngrySrc;
-
-const bakugoNormalImg = new Image();
-bakugoNormalImg.src = charNormalSrc;
-const bakugoAngryImg = new Image();
-bakugoAngryImg.src = charAngrySrc;
+const isReady = (img: HTMLImageElement) => img.complete && img.naturalWidth > 0;
 
 export const PixelCanvas: React.FC<PixelCanvasProps> = ({
   playerX,
@@ -128,12 +56,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
   const idleTickRef = useRef<number>(0);
 
   // Mobile coordinate space: 480 x 800 (Portrait)
-  const V_WIDTH = 480;
   const V_HEIGHT = 800;
-  const FLOOR_Y = 720;
-  const PLAYER_Y = 625;
-  const PLAYER_W = 60;
-  const PLAYER_H = 95; // slightly taller for big head
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -178,9 +101,6 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
       drawBigHeadDoodlePlayer(
         ctx,
         playerX,
-        PLAYER_Y,
-        PLAYER_W,
-        PLAYER_H,
         playerDirection,
         characterAction,
         characterSkin,
@@ -425,20 +345,13 @@ function drawDoodleWordCard(
 
 // ==========================================
 // 4. BIG HEAD (대두) DOODLE PLAYER
-// 요구사항: "그리고 졸라맨 캐릭터는 대두가 되게 표현해줘. 얼굴이 너무 작아서 안보여."
-// 5종 캐릭터:
-// 1. giyeong (기영이: 평소 미소 / 피격 시 엉엉 우는 표정)
-// 2. pikachu (피카츄: 평소 윙크 / 피격 시 지옥의 피카츄)
-// 3. ganadi (가나디: 평소 헤드폰 / 피격 시 우는 표정)
-// 4. saitama (원펀맨: 평소 멍 / 피격 시 핏대 분노)
-// 5. bakugo (바쿠고: 기존 연출 100% 보존 + 콤보 폭발)
+// - 얼굴은 선생님이 준 사진을 비율 그대로 그림 (늘이거나 좌우 반전하지 않음)
+// - 얼굴 아래쪽이 목을 살짝 덮어서 몸과 붙어 보이게 함
+// - 흔들림·기울기는 머리+몸 전체에 한꺼번에 적용 → 얼굴과 몸이 떨어지지 않음
 // ==========================================
 function drawBigHeadDoodlePlayer(
   ctx: CanvasRenderingContext2D,
   x: number,
-  y: number,
-  width: number,
-  height: number,
   dir: 'left' | 'right',
   action: CharacterAction,
   skin: CharacterSkin,
@@ -453,112 +366,107 @@ function drawBigHeadDoodlePlayer(
     ctx.globalAlpha = 0.35;
   }
 
-  const cx = x + width / 2;
-  const bottomY = y + height; // floor position
-
-  ctx.translate(cx, bottomY);
-
-  if (dir === 'left') {
-    ctx.scale(-1, 1);
-  }
-
   const isRunning = action === 'run-left' || action === 'run-right';
   const isDamaged = action === 'squish' || action === 'wobble';
 
-  // Determine Head Image & Cutout Key based on Skin & State
-  let targetImg = giyeongNormalImg;
-  let cacheKey = 'giyeong_normal_cutout';
+  // 발끝(바닥 중앙)을 원점으로
+  ctx.translate(x + PLAYER_W / 2, FLOOR_Y);
 
-  if (skin === 'giyeong') {
-    targetImg = isDamaged ? giyeongCryImg : giyeongNormalImg;
-    cacheKey = isDamaged ? 'giyeong_cry_cutout' : 'giyeong_normal_cutout';
-  } else if (skin === 'pikachu') {
-    targetImg = isDamaged ? pikaHellImg : pikaNormalImg;
-    cacheKey = isDamaged ? 'pika_hell_cutout' : 'pika_normal_cutout';
-  } else if (skin === 'ganadi') {
-    targetImg = isDamaged ? ganadiCryImg : ganadiNormalImg;
-    cacheKey = isDamaged ? 'ganadi_cry_cutout' : 'ganadi_normal_cutout';
-  } else if (skin === 'saitama') {
-    targetImg = isDamaged ? saitamaAngryImg : saitamaNormalImg;
-    cacheKey = isDamaged ? 'saitama_angry_cutout' : 'saitama_normal_cutout';
-  } else if (skin === 'bakugo') {
-    targetImg = isDamaged ? bakugoAngryImg : bakugoNormalImg;
-    cacheKey = isDamaged ? 'bakugo_angry_cutout' : 'bakugo_normal_cutout';
+  // 몸 전체 동작
+  if (isDamaged) {
+    ctx.translate(Math.sin(idleTick * 14) * 2.5, 0); // 작게 부르르
+  } else if (isRunning) {
+    ctx.rotate((dir === 'left' ? -1 : 1) * 0.05); // 달리는 쪽으로 살짝 기울기
   }
 
-  const cutoutCanvas = getCutoutCanvas(targetImg, cacheKey, 230);
+  // 얼굴 크기: 캐릭터마다 '평소' 사진 기준으로 배율을 정해서, 맞았을 때 사진도 같은 배율로
+  const head = HEADS[skin];
+  const img = isDamaged ? head.hit : head.normal;
+  const scale = isReady(head.normal)
+    ? Math.min(HEAD_MAX_W / head.normal.naturalWidth, HEAD_MAX_H / head.normal.naturalHeight)
+    : 0;
+  const headW = scale && isReady(img) ? img.naturalWidth * scale : 56;
+  const headH = scale && isReady(img) ? img.naturalHeight * scale : 56;
 
-  // ==========================================
-  // 대두 (BIG HEAD) 크기: 66px x 66px 로 큼직하고 시원하게!
-  // ==========================================
-  const headW = 66;
-  const headH = 66;
-  const headX = -headW / 2;
-  const headY = -height + 4; // Head sits high
+  const neckY = -NECK_FROM_FLOOR;
+  const headBottom = neckY + HEAD_NECK_OVERLAP;
+  const headTop = headBottom - headH;
 
   // Bakugo Combo Max Explosion Effect (3콤보 이상 시 화려한 폭발 구름 & 빨간 빤짝이)
   if (skin === 'bakugo' && combo >= 3) {
-    drawComboMaxExplosionEffect(ctx, 0, headY + headH / 2, idleTick, combo);
+    drawComboMaxExplosionEffect(ctx, 0, headTop + headH / 2, idleTick, combo);
   }
 
-  // 1. Draw Big Head (누끼 배경 투명화)
+  // 1. 몸 (방향에 따라 몸만 좌우 반전)
   ctx.save();
-  if (isDamaged) {
-    ctx.rotate(Math.sin(idleTick * 12) * 0.1);
-  } else if (isRunning) {
-    ctx.rotate(Math.sin(idleTick * 3.5) * 0.05);
-  }
+  if (dir === 'left') ctx.scale(-1, 1);
+  drawStickBody(ctx, neckY, action, skin, combo, isRunning, isDamaged, idleTick);
+  ctx.restore();
 
-  if (cutoutCanvas) {
-    ctx.drawImage(cutoutCanvas, headX, headY, headW, headH);
-  } else if (targetImg.complete && targetImg.naturalWidth > 0) {
-    ctx.drawImage(targetImg, headX, headY, headW, headH);
+  // 2. 얼굴 (몸 위에 덮어 그림)
+  if (scale && isReady(img)) {
+    ctx.drawImage(img, -headW / 2, headTop, headW, headH);
   } else {
-    // Fallback circle
+    // 사진 불러오기 전 임시 동그라미
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#18181b';
     ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.arc(0, headY + headH / 2, 24, 0, Math.PI * 2);
+    ctx.arc(0, headTop + headH / 2, headH / 2 - 2, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   }
-  ctx.restore();
 
-  // 2. Draw Stickman Body (대두 머리 턱 바로 밑에 깔끔하게 연결되는 날렵한 쫄라맨 몸)
+  ctx.restore();
+}
+
+// 졸라맨 몸통·팔·다리 (원점 = 발끝, 위로 갈수록 y가 음수)
+function drawStickBody(
+  ctx: CanvasRenderingContext2D,
+  neckY: number,
+  action: CharacterAction,
+  skin: CharacterSkin,
+  combo: number,
+  isRunning: boolean,
+  isDamaged: boolean,
+  idleTick: number
+) {
   ctx.strokeStyle = '#18181b';
   ctx.fillStyle = '#ffffff';
   ctx.lineWidth = 2.5;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  const spineTop = headY + headH - 6; // connects under the chin
-  const spineBottom = spineTop + 24;
+  const spineTop = neckY;
+  const hipY = spineTop + SPINE_LEN; // = -LEG_LEN
 
   // Spine
   ctx.beginPath();
   ctx.moveTo(0, spineTop);
-  ctx.lineTo(0, spineBottom);
+  ctx.lineTo(0, hipY);
   ctx.stroke();
 
   // Arms
-  const shoulderY = spineTop + 5;
+  const shoulderY = spineTop + 8;
   if (action === 'happy' || (skin === 'bakugo' && combo >= 3)) {
+    // 만세: 큰 얼굴에 가리지 않게 옆으로 벌려 올림
+    const handX = 22;
+    const handY = shoulderY - 8;
     ctx.beginPath();
     ctx.moveTo(0, shoulderY);
-    ctx.lineTo(-14, shoulderY - 12);
+    ctx.lineTo(-handX, handY);
     ctx.moveTo(0, shoulderY);
-    ctx.lineTo(14, shoulderY - 12);
+    ctx.lineTo(handX, handY);
     ctx.stroke();
 
     if (skin === 'bakugo') {
       ctx.fillStyle = '#22c55e';
-      ctx.fillRect(-22, shoulderY - 18, 10, 12);
-      ctx.strokeRect(-22, shoulderY - 18, 10, 12);
-      ctx.fillRect(12, shoulderY - 18, 10, 12);
-      ctx.strokeRect(12, shoulderY - 18, 10, 12);
-      drawDoodleMiniStar(ctx, -26, shoulderY - 10, 6);
-      drawDoodleMiniStar(ctx, 26, shoulderY - 10, 6);
+      ctx.fillRect(-handX - 5, handY - 6, 10, 12);
+      ctx.strokeRect(-handX - 5, handY - 6, 10, 12);
+      ctx.fillRect(handX - 5, handY - 6, 10, 12);
+      ctx.strokeRect(handX - 5, handY - 6, 10, 12);
+      drawDoodleMiniStar(ctx, -handX - 9, handY + 2, 6);
+      drawDoodleMiniStar(ctx, handX + 9, handY + 2, 6);
     }
   } else if (isRunning) {
     const armCycle = Math.sin(idleTick * 3.0);
@@ -567,6 +475,14 @@ function drawBigHeadDoodlePlayer(
     ctx.lineTo(-12 * armCycle, shoulderY + 8);
     ctx.moveTo(0, shoulderY);
     ctx.lineTo(12 * armCycle, shoulderY + 8);
+    ctx.stroke();
+  } else if (isDamaged) {
+    // 맞았을 때: 팔을 옆으로 번쩍
+    ctx.beginPath();
+    ctx.moveTo(0, shoulderY);
+    ctx.lineTo(-13, shoulderY - 4);
+    ctx.moveTo(0, shoulderY);
+    ctx.lineTo(13, shoulderY - 4);
     ctx.stroke();
   } else {
     ctx.beginPath();
@@ -577,43 +493,40 @@ function drawBigHeadDoodlePlayer(
     ctx.stroke();
   }
 
-  // Legs
-  const hipY = spineBottom;
+  // Legs (발끝이 바닥 y=0 에 닿게)
   if (action === 'happy') {
     ctx.beginPath();
     ctx.moveTo(0, hipY);
-    ctx.lineTo(-7, hipY + 15);
+    ctx.lineTo(-7, 0);
     ctx.moveTo(0, hipY);
-    ctx.lineTo(7, hipY + 15);
+    ctx.lineTo(7, 0);
     ctx.stroke();
   } else if (isRunning) {
     const legCycle = Math.sin(idleTick * 3.4);
     ctx.beginPath();
     ctx.moveTo(0, hipY);
-    ctx.lineTo(13 * legCycle, hipY + 10);
-    ctx.lineTo(15 * legCycle + 2, hipY + 18);
+    ctx.lineTo(13 * legCycle, hipY + LEG_LEN * 0.55);
+    ctx.lineTo(15 * legCycle + 2, 0);
     ctx.moveTo(0, hipY);
-    ctx.lineTo(-13 * legCycle, hipY + 10);
-    ctx.lineTo(-15 * legCycle + 2, hipY + 18);
+    ctx.lineTo(-13 * legCycle, hipY + LEG_LEN * 0.55);
+    ctx.lineTo(-15 * legCycle + 2, 0);
     ctx.stroke();
   } else if (isDamaged) {
     ctx.beginPath();
     ctx.moveTo(0, hipY);
-    ctx.lineTo(-11, hipY + 16);
+    ctx.lineTo(-11, 0);
     ctx.moveTo(0, hipY);
-    ctx.lineTo(11, hipY + 16);
+    ctx.lineTo(11, 0);
     ctx.stroke();
   } else {
     const idleBob = Math.sin(idleTick) * 1.5;
     ctx.beginPath();
     ctx.moveTo(0, hipY);
-    ctx.lineTo(-7, hipY + 17 + idleBob);
+    ctx.lineTo(-7, idleBob);
     ctx.moveTo(0, hipY);
-    ctx.lineTo(7, hipY + 17 + idleBob);
+    ctx.lineTo(7, idleBob);
     ctx.stroke();
   }
-
-  ctx.restore();
 }
 
 // ==========================================

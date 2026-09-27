@@ -1,11 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CharacterSkin } from '../types/game';
 import { Play, Trophy, Clock, AlertCircle, User, Dices, Lock, BookOpen } from 'lucide-react';
-import giyeongNormalSrc from '../assets/giyeong_normal.jpg';
-import pikaNormalSrc from '../assets/pika_normal.jpg';
-import ganadiNormalSrc from '../assets/ganadi_normal.jpg';
-import saitamaNormalSrc from '../assets/saitama_normal.jpg';
-import charNormalSrc from '../assets/char_normal.jpg';
+import { HEAD_IMAGES } from '../data/heads';
 
 interface StartScreenProps {
   nickname: string;
@@ -59,11 +55,11 @@ export const StartScreen: React.FC<StartScreenProps> = ({
   };
 
   const characterList: { id: CharacterSkin; name: string; img: string }[] = [
-    { id: 'giyeong', name: '기영이', img: giyeongNormalSrc },
-    { id: 'pikachu', name: '피카츄', img: pikaNormalSrc },
-    { id: 'ganadi', name: '가나디', img: ganadiNormalSrc },
-    { id: 'saitama', name: '원펀맨', img: saitamaNormalSrc },
-    { id: 'bakugo', name: '바쿠고', img: charNormalSrc },
+    { id: 'giyeong', name: '기영이', img: HEAD_IMAGES.giyeong.normal },
+    { id: 'pikachu', name: '피카츄', img: HEAD_IMAGES.pikachu.normal },
+    { id: 'ganadi', name: '가나디', img: HEAD_IMAGES.ganadi.normal },
+    { id: 'saitama', name: '원펀맨', img: HEAD_IMAGES.saitama.normal },
+    { id: 'bakugo', name: '바쿠고', img: HEAD_IMAGES.bakugo.normal },
   ];
 
   const handleRandomSkin = () => {
@@ -200,7 +196,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
                       <img
                         src={char.img}
                         alt={char.name}
-                        className="w-full h-full object-cover scale-110"
+                        className="w-full h-full object-contain p-0.5"
                       />
                     </div>
                     <span className="font-doodle font-bold text-[11px] text-zinc-950 truncate max-w-full">
