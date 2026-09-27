@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Gaegu', 'Jua', 'Noto Sans KR', sans-serif;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+    overscroll-behavior: none;
+    background-color: #ffffff;
+    color: #18181b;
+  }
+}
+
+.font-doodle {
+  font-family: 'Gaegu', 'Nanum Pen Script', 'Jua', cursive;
+}
+
+.font-pen {
+  font-family: 'Nanum Pen Script', 'Gaegu', cursive;
+}
+
+.doodle-box {
+  border: 2.5px solid #18181b;
+  box-shadow: 3px 3px 0px #18181b;
+}
+
+.doodle-box-sm {
+  border: 2px solid #18181b;
+  box-shadow: 2px 2px 0px #18181b;
+}
+
+.doodle-btn {
+  border: 2.5px solid #18181b;
+  box-shadow: 3px 3px 0px #18181b;
+  transition: transform 0.05s ease, box-shadow 0.05s ease;
+}
+
+.doodle-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px #18181b;
+}
+
+/* Custom retro 2000s scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f4f4f5;
+  border-left: 1px solid #d4d4d8;
+}
+::-webkit-scrollbar-thumb {
+  background: #71717a;
+  border: 1px solid #18181b;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
