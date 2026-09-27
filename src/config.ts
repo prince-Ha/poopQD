@@ -4,7 +4,7 @@
  * 선생님 메뉴 비밀번호 (숫자 4자리).
  * 학생이 실수로 선생님 버튼을 누르지 않게 막는 '잠금'일 뿐, 보안 장치는 아니에요.
  */
-export const TEACHER_PIN = '1234';
+export const TEACHER_PIN = '6666';
 
 /**
  * 구글 시트 웹 앱 ID (https://script.google.com/macros/s/<여기>/exec 의 <여기> 부분).
