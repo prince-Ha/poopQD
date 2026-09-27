@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CharacterSkin } from '../types/game';
-import { Play, QrCode, Trophy, Clock, AlertCircle, Edit3, User } from 'lucide-react';
+import { Play, QrCode, Trophy, Clock, AlertCircle, Edit3, User, Dices } from 'lucide-react';
 import giyeongNormalSrc from '../assets/giyeong_normal.jpg';
 import pikaNormalSrc from '../assets/pika_normal.jpg';
 import ganadiNormalSrc from '../assets/ganadi_normal.jpg';
@@ -33,9 +33,19 @@ export const StartScreen: React.FC<StartScreenProps> = ({
   onOpenQuestionEditor,
 }) => {
   const [errorShake, setErrorShake] = useState(false);
+  // 🎲 랜덤 뽑기 중에 잠깐씩 하이라이트되는 캐릭터
+  const [rollingSkin, setRollingSkin] = useState<CharacterSkin | null>(null);
+  const rollTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (rollTimerRef.current) window.clearInterval(rollTimerRef.current);
+    };
+  }, []);
 
   const handleStart = (e: React.FormEvent) => {
     e.preventDefault();
+    if (rollingSkin) return;
     if (!nickname.trim()) {
       setErrorShake(true);
       setTimeout(() => setErrorShake(false), 500);
@@ -51,6 +61,27 @@ export const StartScreen: React.FC<StartScreenProps> = ({
     { id: 'saitama', name: '원펀맨', img: saitamaNormalSrc },
     { id: 'bakugo', name: '바쿠고', img: charNormalSrc },
   ];
+
+  const handleRandomSkin = () => {
+    if (rollTimerRef.current) return;
+    const ids = characterList.map((c) => c.id);
+    const finalSkin = ids[Math.floor(Math.random() * ids.length)];
+    const totalSteps = 12;
+    let step = 0;
+    rollTimerRef.current = window.setInterval(() => {
+      step++;
+      if (step >= totalSteps) {
+        if (rollTimerRef.current) window.clearInterval(rollTimerRef.current);
+        rollTimerRef.current = null;
+        setRollingSkin(null);
+        onChangeSkin(finalSkin);
+        return;
+      }
+      setRollingSkin(ids[step % ids.length]);
+    }, 70);
+  };
+
+  const shownSkin = rollingSkin ?? characterSkin;
 
   return (
     <div className="relative w-full h-full min-h-[100dvh] flex flex-col items-center justify-between p-3 sm:p-4 text-zinc-900 select-none bg-white">
@@ -140,21 +171,31 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
           {/* 2. Character Selection (5종 캐릭터 직접 선택!) */}
           <div>
-            <label className="block text-xs font-doodle font-bold text-zinc-900 mb-1 flex items-center justify-between">
+            <div className="text-xs font-doodle font-bold text-zinc-900 mb-1 flex items-center justify-between">
               <span className="flex items-center gap-1">
                 <User className="w-3.5 h-3.5 text-zinc-800" />
                 <span>캐릭터 선택 (대두 쫄라맨 5종)</span>
               </span>
-            </label>
+              <button
+                type="button"
+                onClick={handleRandomSkin}
+                disabled={rollingSkin !== null}
+                className="flex items-center gap-1 px-2 py-0.5 bg-white hover:bg-zinc-50 border-2 border-zinc-900 rounded-lg text-[11px] font-doodle font-bold shadow-[1.5px_1.5px_0px_#18181b] active:translate-x-[1px] active:translate-y-[1px] disabled:opacity-60"
+                title="캐릭터 랜덤 뽑기"
+              >
+                <Dices className="w-3.5 h-3.5 text-purple-600" />
+                <span>랜덤</span>
+              </button>
+            </div>
 
             <div className="grid grid-cols-5 gap-1.5">
               {characterList.map((char) => {
-                const isSelected = characterSkin === char.id;
+                const isSelected = shownSkin === char.id;
                 return (
                   <button
                     key={char.id}
                     type="button"
-                    onClick={() => onChangeSkin(char.id)}
+                    onClick={() => !rollingSkin && onChangeSkin(char.id)}
                     className={`p-1 rounded-2xl flex flex-col items-center justify-center border-2 border-zinc-900 transition-all ${
                       isSelected
                         ? 'bg-yellow-300 shadow-[2px_2px_0px_#18181b] scale-105 z-10'
@@ -208,7 +249,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
           {/* 4. Big Start Button */}
           <button
             type="submit"
-            disabled={!nickname.trim()}
+            disabled={!nickname.trim() || rollingSkin !== null}
             className={`w-full py-3 rounded-2xl font-doodle font-bold text-xl flex items-center justify-center gap-1.5 border-3 border-zinc-900 transition-all ${
               nickname.trim()
                 ? 'bg-yellow-300 hover:bg-yellow-400 text-zinc-950 cursor-pointer shadow-[3px_3px_0px_#18181b] active:translate-x-[2px] active:translate-y-[2px] active:shadow-[1px_1px_0px_#18181b]'

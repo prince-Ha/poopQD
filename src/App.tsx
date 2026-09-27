@@ -15,7 +15,19 @@ import {
   getSoundMuted,
   saveSoundMuted,
   saveGameRecord,
+  getLastSkin,
+  saveLastSkin,
 } from './utils/storage';
+
+// 피셔-예이츠 셔플 (sort(random)보다 고르게 섞임)
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 export default function App() {
   // Screen state
@@ -35,7 +47,7 @@ export default function App() {
 
   const [selectedChapterId] = useState<string>('bio-genetics');
   const [nickname, setNickname] = useState<string>(() => getLastNickname());
-  const [characterSkin, setCharacterSkin] = useState<CharacterSkin>('ganadi');
+  const [characterSkin, setCharacterSkin] = useState<CharacterSkin>(() => getLastSkin());
   const [timeLimit, setTimeLimit] = useState<number>(300); // 300s (5 mins) default
 
   // Modals
@@ -68,9 +80,8 @@ export default function App() {
   const [timeLeft, setTimeLeft] = useState<number>(300);
   const [showHealAlert, setShowHealAlert] = useState(false);
 
-  // Question state
-  const [shuffledQuestions, setShuffledQuestions] = useState<QuizQuestion[]>([]);
-  const [questionIdx, setQuestionIdx] = useState<number>(0);
+  // Question state (화면 표시용. 실제 진행은 gameStateRef의 deck/qIdx)
+  const [currentQuestion, setCurrentQuestion] = useState<QuizQuestion | null>(null);
 
   // Mobile portrait dimensions: 480 x 800
   const V_WIDTH = 480;
@@ -118,6 +129,9 @@ export default function App() {
     nextWordSpawn: 0.8,
     nextPoopSpawn: 1.8,
     currentQuestion: null as QuizQuestion | null,
+    allQuestions: [] as QuizQuestion[],
+    deck: [] as QuizQuestion[],
+    qIdx: 0,
     totalElapsed: 0,
   });
 
@@ -134,7 +148,11 @@ export default function App() {
   }, [isMuted]);
 
   const currentChapter = chapters.find((c) => c.id === selectedChapterId) || chapters[0];
-  const currentQuestion = shuffledQuestions[questionIdx] || null;
+
+  const handleChangeSkin = (skin: CharacterSkin) => {
+    setCharacterSkin(skin);
+    saveLastSkin(skin);
+  };
 
   // Keyboard controls
   useEffect(() => {
@@ -175,15 +193,9 @@ export default function App() {
     if (!cleanNick) return;
     saveLastNickname(cleanNick);
 
-    // 🎲 Pick a random character among the 3 skins (가나디, 바쿠고, 피카츄)
-    const availableSkins: CharacterSkin[] = ['ganadi', 'bakugo', 'pikachu'];
-    const chosenSkin = availableSkins[Math.floor(Math.random() * availableSkins.length)];
-    setCharacterSkin(chosenSkin);
-
     // Shuffle questions
-    const qList = [...currentChapter.questions].sort(() => Math.random() - 0.5);
-    setShuffledQuestions(qList);
-    setQuestionIdx(0);
+    const qList = shuffle(currentChapter.questions);
+    setCurrentQuestion(qList[0] || null);
 
     // Reset gameplay stats
     setHp(5);
@@ -229,29 +241,32 @@ export default function App() {
       shake: 0,
       nextWordSpawn: 0.8,
       nextPoopSpawn: 1.8,
-      currentQuestion: qList[0],
+      currentQuestion: qList[0] || null,
+      allQuestions: currentChapter.questions,
+      deck: qList,
+      qIdx: 0,
       totalElapsed: 0,
     };
 
     setScreen('playing');
   }, [nickname, currentChapter, timeLimit]);
 
-  // Advance to next question
-  const advanceToNextQuestion = useCallback(() => {
-    setQuestionIdx((prevIdx) => {
-      let nextIdx = prevIdx + 1;
-      if (nextIdx >= shuffledQuestions.length) {
-        // Reshuffle and continue
-        const reshuffled = [...currentChapter.questions].sort(() => Math.random() - 0.5);
-        setShuffledQuestions(reshuffled);
-        nextIdx = 0;
-        gameStateRef.current.currentQuestion = reshuffled[0];
-      } else {
-        gameStateRef.current.currentQuestion = shuffledQuestions[nextIdx];
+  // Advance to next question (한 바퀴 다 돌면 다시 섞어서 계속)
+  const advanceToNextQuestion = (state: typeof gameStateRef.current) => {
+    state.qIdx += 1;
+    if (state.qIdx >= state.deck.length) {
+      const prev = state.currentQuestion;
+      const reshuffled = shuffle(state.allQuestions);
+      // 방금 푼 문제가 바로 또 나오지 않게
+      if (reshuffled.length > 1 && prev && reshuffled[0].id === prev.id) {
+        [reshuffled[0], reshuffled[1]] = [reshuffled[1], reshuffled[0]];
       }
-      return nextIdx;
-    });
-  }, [shuffledQuestions, currentChapter]);
+      state.deck = reshuffled;
+      state.qIdx = 0;
+    }
+    state.currentQuestion = state.deck[state.qIdx] || null;
+    setCurrentQuestion(state.currentQuestion);
+  };
 
   // Main game loop (requestAnimationFrame)
   useEffect(() => {
@@ -390,7 +405,8 @@ export default function App() {
         }
 
         // 5. Update Falling Items physics & Collision detection
-        const survivingItems: FallingItem[] = [];
+        let survivingItems: FallingItem[] = [];
+        let answeredCorrect = false;
         const playerBox = {
           x: state.playerX + 8,
           y: PLAYER_Y + 12,
@@ -412,6 +428,12 @@ export default function App() {
             h: item.height - 8,
           };
 
+          // 이번 프레임에 정답을 먹었으면 남은 단어 카드는 전부 치움
+          if (answeredCorrect && item.type !== 'obstacle') {
+            spawnCardPuff(item, state);
+            continue;
+          }
+
           const isColliding =
             playerBox.x < itemBox.x + itemBox.w &&
             playerBox.x + playerBox.w > itemBox.x &&
@@ -420,11 +442,22 @@ export default function App() {
 
           if (isColliding) {
             handleItemCollision(item, state);
+            if (item.type === 'correct') answeredCorrect = true;
             // Item consumed, do not push to survivingItems
           } else if (item.y < 760) {
             // Still on screen
             survivingItems.push(item);
           }
+        }
+        if (answeredCorrect) {
+          // 정답 먹기 전에 이미 살아남은 카드들도 '펑' 하고 치우기
+          survivingItems = survivingItems.filter((item) => {
+            if (item.type === 'obstacle') return true;
+            spawnCardPuff(item, state);
+            return false;
+          });
+          // 새 문제 카드가 곧바로 떨어지도록
+          state.nextWordSpawn = Math.min(state.nextWordSpawn, 0.5);
         }
         state.items = survivingItems;
         setFallingItems([...state.items]);
@@ -463,7 +496,7 @@ export default function App() {
       if (healTimeoutRef.current) clearTimeout(healTimeoutRef.current);
       if (stageAlertTimeoutRef.current) clearTimeout(stageAlertTimeoutRef.current);
     };
-  }, [screen, advanceToNextQuestion]);
+  }, [screen]);
 
   // Spawn Word Card
   const spawnWordItem = (state: typeof gameStateRef.current) => {
@@ -535,6 +568,24 @@ export default function App() {
     });
   };
 
+  // 치워지는 단어 카드의 '펑' 연기
+  const spawnCardPuff = (item: FallingItem, state: typeof gameStateRef.current) => {
+    for (let i = 0; i < 6; i++) {
+      state.particles.push({
+        id: particleIdCounter.current++,
+        x: item.x + Math.random() * item.width,
+        y: item.y + item.height / 2,
+        vx: (Math.random() - 0.5) * 120,
+        vy: -40 - Math.random() * 80,
+        size: 3 + Math.random() * 3,
+        color: '#d4d4d8',
+        alpha: 1,
+        life: 0.35 + Math.random() * 0.25,
+        maxLife: 0.6,
+      });
+    }
+  };
+
   // Handle Collisions
   const handleItemCollision = (item: FallingItem, state: typeof gameStateRef.current) => {
     if (item.type === 'correct') {
@@ -588,7 +639,7 @@ export default function App() {
       }
 
       // Next question
-      advanceToNextQuestion();
+      advanceToNextQuestion(state);
     } else if (item.type === 'wrong') {
       // 2. WRONG ANSWER
       if (state.invincibleTimer > 0) return;
@@ -608,7 +659,7 @@ export default function App() {
       // Floating text
       state.floatingTexts.push({
         id: textIdCounter.current++,
-        text: `❌ 오답! (${item.text})`,
+        text: '❌ 오답!',
         x: item.x + item.width / 2,
         y: PLAYER_Y - 20,
         color: '#dc2626',
@@ -777,7 +828,7 @@ export default function App() {
             nickname={nickname}
             onChangeNickname={setNickname}
             characterSkin={characterSkin}
-            onChangeSkin={setCharacterSkin}
+            onChangeSkin={handleChangeSkin}
             timeLimit={timeLimit}
             onChangeTimeLimit={setTimeLimit}
             onStartGame={handleStartGame}
@@ -798,7 +849,7 @@ export default function App() {
               combo={combo}
               timeLeft={timeLeft}
               currentQuestion={currentQuestion}
-              questionNumber={questionIdx + 1}
+              questionNumber={correctCount + 1}
               totalAnswered={correctCount}
               isPaused={isPaused}
               isMuted={isMuted}

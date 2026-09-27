@@ -1,4 +1,4 @@
-import { GameRecord, LeaderboardEntry } from '../types/game';
+import { CharacterSkin, GameRecord, LeaderboardEntry } from '../types/game';
 
 const RECORDS_STORAGE_KEY = 'science_game_records_v1';
 const WEBHOOK_STORAGE_KEY = 'science_game_webhook_url';
@@ -216,4 +216,21 @@ export function exportRecordsToCSV(): void {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+const LAST_SKIN_KEY = 'science_game_last_skin';
+const ALL_SKINS: CharacterSkin[] = ['giyeong', 'pikachu', 'ganadi', 'saitama', 'bakugo'];
+
+export function saveLastSkin(skin: CharacterSkin) {
+  try {
+    localStorage.setItem(LAST_SKIN_KEY, skin);
+  } catch {}
+}
+
+export function getLastSkin(): CharacterSkin {
+  try {
+    const saved = localStorage.getItem(LAST_SKIN_KEY) as CharacterSkin | null;
+    if (saved && ALL_SKINS.includes(saved)) return saved;
+  } catch {}
+  return 'ganadi';
 }
