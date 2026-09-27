@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ScienceChapter, FallingItem, Particle, FloatingText, CharacterAction, QuizQuestion, CharacterSkin } from './types/game';
+import { FallingItem, Particle, FloatingText, CharacterAction, QuizQuestion, CharacterSkin, LeaderboardEntry } from './types/game';
 import { INITIAL_CHAPTERS } from './data/chapters';
+import { STUDENT_TIME_LIMIT, TEST_TIME_LIMIT } from './config';
 import { PixelCanvas } from './components/PixelCanvas';
 import { GameHUD } from './components/GameHUD';
 import { TouchControls } from './components/TouchControls';
 import { StartScreen } from './components/StartScreen';
-import { GameOverScreen } from './components/GameOverScreen';
+import { GameOverScreen, SyncStatus } from './components/GameOverScreen';
 import { QRCodeModal } from './components/QRCodeModal';
-import { QuestionEditorModal } from './components/QuestionEditorModal';
+import { PinModal } from './components/PinModal';
+import { TeacherPanel, QuizSource } from './components/TeacherPanel';
+import { RankingModal } from './components/RankingModal';
 import { soundEngine } from './utils/audio';
 import {
   getLastNickname,
@@ -17,7 +20,40 @@ import {
   saveGameRecord,
   getLastSkin,
   saveLastSkin,
+  getLeaderboard,
+  exportRecordsToCSV,
 } from './utils/storage';
+import {
+  rememberSheetIdFromLocation,
+  getSheetId,
+  saveSheetId,
+  fetchSheetQuestions,
+  getCachedSheetQuestions,
+  fetchSheetRanking,
+  submitSheetRecord,
+} from './utils/sheet';
+
+interface QuizSet {
+  title: string;
+  questions: QuizQuestion[];
+  source: QuizSource;
+}
+
+const DEFAULT_QUIZ: QuizSet = {
+  title: INITIAL_CHAPTERS[0].title,
+  questions: INITIAL_CHAPTERS[0].questions,
+  source: 'default',
+};
+
+const TEACHER_SESSION_KEY = 'science_game_teacher_unlocked';
+
+// QR로 들어온 학생 폰이면 주소의 ?sheet=ID 를 기억해 둠
+rememberSheetIdFromLocation();
+
+function loadInitialQuiz(sheetId: string | null): QuizSet {
+  const cached = sheetId ? getCachedSheetQuestions(sheetId) : null;
+  return cached ? { title: cached.title || DEFAULT_QUIZ.title, questions: cached.questions, source: 'cache' } : DEFAULT_QUIZ;
+}
 
 // 피셔-예이츠 셔플 (sort(random)보다 고르게 섞임)
 function shuffle<T>(arr: T[]): T[] {
@@ -33,43 +69,61 @@ export default function App() {
   // Screen state
   const [screen, setScreen] = useState<'start' | 'playing' | 'gameover'>('start');
 
-  // Single Chapter: '생식과 유전'
-  const [chapters, setChapters] = useState<ScienceChapter[]>(() => {
-    try {
-      const saved = localStorage.getItem('science_quiz_custom_chapters');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return INITIAL_CHAPTERS;
-  });
+  // 문제: 구글 시트 → (실패 시) 이 기기에 저장된 시트 문제 → 기본 문제
+  const [sheetId, setSheetId] = useState<string | null>(() => getSheetId());
+  const [quiz, setQuiz] = useState<QuizSet>(() => loadInitialQuiz(getSheetId()));
+  const [isQuizLoading, setIsQuizLoading] = useState<boolean>(() => getSheetId() !== null);
+  const sheetIdRef = useRef<string | null>(sheetId);
+  sheetIdRef.current = sheetId;
 
-  const [selectedChapterId] = useState<string>('bio-genetics');
   const [nickname, setNickname] = useState<string>(() => getLastNickname());
   const [characterSkin, setCharacterSkin] = useState<CharacterSkin>(() => getLastSkin());
-  const [timeLimit, setTimeLimit] = useState<number>(300); // 300s (5 mins) default
+  const [isTestPlay, setIsTestPlay] = useState(false);
 
-  // Modals
+  // Teacher mode & modals
+  const [isTeacher, setIsTeacher] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(TEACHER_SESSION_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [isPinOpen, setIsPinOpen] = useState(false);
+  const [isTeacherPanelOpen, setIsTeacherPanelOpen] = useState(false);
   const [isQROpen, setIsQROpen] = useState(false);
-  const [isQuestionEditorOpen, setIsQuestionEditorOpen] = useState(false);
+  const [isRankingOpen, setIsRankingOpen] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isMuted, setIsMuted] = useState<boolean>(() => getSoundMuted());
   const [stageAlert, setStageAlert] = useState<string | null>(null);
 
-  const handleSaveCustomChapters = (updated: ScienceChapter[]) => {
-    setChapters(updated);
-    try {
-      localStorage.setItem('science_quiz_custom_chapters', JSON.stringify(updated));
-    } catch {}
-  };
+  // Result screen: ranking & sheet sync
+  const [ranking, setRanking] = useState<LeaderboardEntry[] | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('none');
 
-  const handleResetDefaultChapters = () => {
-    setChapters(INITIAL_CHAPTERS);
+  const loadQuiz = useCallback(async (id: string | null): Promise<boolean> => {
+    if (!id) {
+      setQuiz(DEFAULT_QUIZ);
+      setIsQuizLoading(false);
+      return true;
+    }
+    setIsQuizLoading(true);
     try {
-      localStorage.removeItem('science_quiz_custom_chapters');
-    } catch {}
-  };
+      const set = await fetchSheetQuestions(id);
+      if (sheetIdRef.current === id) {
+        setQuiz({ title: set.title || DEFAULT_QUIZ.title, questions: set.questions, source: 'sheet' });
+      }
+      return true;
+    } catch {
+      if (sheetIdRef.current === id) setQuiz(loadInitialQuiz(id));
+      return false;
+    } finally {
+      if (sheetIdRef.current === id) setIsQuizLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadQuiz(sheetId);
+  }, [sheetId, loadQuiz]);
 
   // Gameplay state
   const [hp, setHp] = useState<number>(5);
@@ -119,7 +173,11 @@ export default function App() {
     maxCombo: 0,
     correctCount: 0,
     timeLeft: 300,
-    timeLimit: 300,
+    timeLimit: STUDENT_TIME_LIMIT,
+    isTest: false,
+    nickname: '',
+    chapterTitle: '',
+    skin: 'ganadi' as CharacterSkin,
     currentStage: 1,
     items: [] as FallingItem[],
     particles: [] as Particle[],
@@ -147,7 +205,6 @@ export default function App() {
     saveSoundMuted(isMuted);
   }, [isMuted]);
 
-  const currentChapter = chapters.find((c) => c.id === selectedChapterId) || chapters[0];
 
   const handleChangeSkin = (skin: CharacterSkin) => {
     setCharacterSkin(skin);
@@ -188,13 +245,19 @@ export default function App() {
   }, [screen]);
 
   // Start / Restart Game
-  const handleStartGame = useCallback(() => {
+  // test=true: 선생님 20초 테스트 (기록 안 남음)
+  const handleStartGame = useCallback((test = false) => {
     const cleanNick = nickname.trim();
-    if (!cleanNick) return;
-    saveLastNickname(cleanNick);
+    if (!cleanNick && !test) return;
+    if (cleanNick) saveLastNickname(cleanNick);
+    const limit = test ? TEST_TIME_LIMIT : STUDENT_TIME_LIMIT;
+    setIsTestPlay(test);
+    setRanking(null);
+    setSyncStatus('none');
+    setIsTeacherPanelOpen(false);
 
     // Shuffle questions
-    const qList = shuffle(currentChapter.questions);
+    const qList = shuffle(quiz.questions);
     setCurrentQuestion(qList[0] || null);
 
     // Reset gameplay stats
@@ -203,7 +266,7 @@ export default function App() {
     setCombo(0);
     setMaxCombo(0);
     setCorrectCount(0);
-    setTimeLeft(timeLimit);
+    setTimeLeft(limit);
     setShowHealAlert(false);
     setStageAlert(null);
     setIsPaused(false);
@@ -231,8 +294,12 @@ export default function App() {
       combo: 0,
       maxCombo: 0,
       correctCount: 0,
-      timeLeft: timeLimit,
-      timeLimit: timeLimit,
+      timeLeft: limit,
+      timeLimit: limit,
+      isTest: test,
+      nickname: cleanNick || '선생님 테스트',
+      chapterTitle: quiz.title,
+      skin: characterSkin,
       currentStage: 1,
       items: [],
       particles: [],
@@ -242,14 +309,14 @@ export default function App() {
       nextWordSpawn: 0.8,
       nextPoopSpawn: 1.8,
       currentQuestion: qList[0] || null,
-      allQuestions: currentChapter.questions,
+      allQuestions: quiz.questions,
       deck: qList,
       qIdx: 0,
       totalElapsed: 0,
     };
 
     setScreen('playing');
-  }, [nickname, currentChapter, timeLimit]);
+  }, [nickname, quiz, characterSkin]);
 
   // Advance to next question (한 바퀴 다 돌면 다시 섞어서 계속)
   const advanceToNextQuestion = (state: typeof gameStateRef.current) => {
@@ -761,18 +828,107 @@ export default function App() {
     state.items = [];
     setFallingItems([]);
 
-    // Save gameplay record
+    setScreen('gameover');
+    if (state.isTest) return; // 선생님 테스트는 기록 안 남김
+
+    // 1) 이 기기에 저장 (시트가 안 될 때의 예비 기록)
     saveGameRecord({
-      nickname: nickname.trim(),
-      chapterTitle: currentChapter.title,
+      nickname: state.nickname,
+      chapterTitle: state.chapterTitle,
       score: state.score,
       correctCount: state.correctCount,
       maxCombo: state.maxCombo,
       timeLimit: state.timeLimit,
+      character: state.skin,
     });
 
-    setScreen('gameover');
+    // 2) 구글 시트에 보내고 반 전체 랭킹 받아오기
+    const id = sheetIdRef.current;
+    if (!id) {
+      setRanking(getLeaderboard(state.chapterTitle));
+      setSyncStatus('none');
+      return;
+    }
+    syncRecordToSheet(id, {
+      nickname: state.nickname,
+      chapter: state.chapterTitle,
+      score: state.score,
+      correctCount: state.correctCount,
+      maxCombo: state.maxCombo,
+      character: state.skin,
+    });
   };
+
+  const syncRecordToSheet = async (id: string, record: Parameters<typeof submitSheetRecord>[1]) => {
+    setSyncStatus('saving');
+    try {
+      setRanking(await submitSheetRecord(id, record));
+      setSyncStatus('saved');
+      return;
+    } catch {
+      // 저장은 됐는데 응답만 못 받았을 수도 있으니, 랭킹을 다시 받아서 확인
+    }
+    try {
+      const list = await fetchSheetRanking(id, record.chapter);
+      const mine = list.find((e) => e.nickname.trim().toLowerCase() === record.nickname.trim().toLowerCase());
+      setRanking(list);
+      setSyncStatus(mine && mine.score >= record.score ? 'saved' : 'error');
+    } catch {
+      setRanking(getLeaderboard(record.chapter));
+      setSyncStatus('error');
+    }
+  };
+
+  // ---- 선생님 메뉴 ----
+  const handleOpenTeacher = () => {
+    if (isTeacher) setIsTeacherPanelOpen(true);
+    else setIsPinOpen(true);
+  };
+
+  const handleUnlockTeacher = () => {
+    setIsTeacher(true);
+    try {
+      sessionStorage.setItem(TEACHER_SESSION_KEY, '1');
+    } catch {}
+    setIsPinOpen(false);
+    setIsTeacherPanelOpen(true);
+  };
+
+  const handleLockTeacher = () => {
+    setIsTeacher(false);
+    try {
+      sessionStorage.removeItem(TEACHER_SESSION_KEY);
+    } catch {}
+    setIsTeacherPanelOpen(false);
+  };
+
+  const handleConnectSheet = async (id: string) => {
+    try {
+      const set = await fetchSheetQuestions(id);
+      saveSheetId(id);
+      sheetIdRef.current = id;
+      setSheetId(id);
+      setQuiz({ title: set.title || DEFAULT_QUIZ.title, questions: set.questions, source: 'sheet' });
+      return { ok: true, message: `연결됐어요! '${set.title || DEFAULT_QUIZ.title}' 문제 ${set.questions.length}개를 불러왔어요.` };
+    } catch {
+      return {
+        ok: false,
+        message: "연결하지 못했어요. 배포할 때 액세스를 '모든 사용자'로 했는지, setup을 실행했는지 확인해 주세요.",
+      };
+    }
+  };
+
+  const handleDisconnectSheet = () => {
+    saveSheetId(null);
+    sheetIdRef.current = null;
+    setSheetId(null);
+  };
+
+  // 학생용 접속 주소: 시트가 연결돼 있으면 ?sheet=ID 를 붙여서 QR 하나로 시트까지 연결
+  const studentUrl = (() => {
+    const base = `${window.location.origin}${window.location.pathname}`;
+    return sheetId ? `${base}?sheet=${sheetId}` : base;
+  })();
 
   // Touch Movement callbacks
   const handleMoveLeftStart = () => {
@@ -829,12 +985,14 @@ export default function App() {
             onChangeNickname={setNickname}
             characterSkin={characterSkin}
             onChangeSkin={handleChangeSkin}
-            timeLimit={timeLimit}
-            onChangeTimeLimit={setTimeLimit}
-            onStartGame={handleStartGame}
-            onOpenQR={() => setIsQROpen(true)}
-            onOpenLeaderboard={() => setScreen('gameover')}
-            onOpenQuestionEditor={() => setIsQuestionEditorOpen(true)}
+            chapterTitle={quiz.title}
+            questionCount={quiz.questions.length}
+            isQuizLoading={isQuizLoading}
+            timeLimit={STUDENT_TIME_LIMIT}
+            isTeacher={isTeacher}
+            onStartGame={() => handleStartGame(false)}
+            onOpenTeacher={handleOpenTeacher}
+            onOpenLeaderboard={() => setIsRankingOpen(true)}
           />
         )}
 
@@ -858,6 +1016,7 @@ export default function App() {
               onGoHome={handleGoHome}
               showHealAlert={showHealAlert}
               stageAlert={stageAlert}
+              isTestPlay={isTestPlay}
             />
 
             {/* Mobile Canvas: 480 x 800 */}
@@ -889,25 +1048,48 @@ export default function App() {
         {/* 3. GAMEOVER / RESULT SCREEN */}
         {screen === 'gameover' && (
           <GameOverScreen
-            nickname={nickname || '학생'}
+            nickname={gameStateRef.current.nickname || nickname || '학생'}
             finalScore={score}
             correctCount={correctCount}
             maxCombo={maxCombo}
-            chapterTitle={currentChapter.title}
-            onRetry={handleStartGame}
+            chapterTitle={gameStateRef.current.chapterTitle || quiz.title}
+            isTestPlay={isTestPlay}
+            ranking={ranking}
+            rankingSource={sheetId ? 'sheet' : 'local'}
+            syncStatus={syncStatus}
+            onRetry={() => handleStartGame(isTestPlay)}
             onGoHome={() => setScreen('start')}
           />
         )}
       </div>
 
       {/* MODALS */}
-      <QRCodeModal isOpen={isQROpen} onClose={() => setIsQROpen(false)} />
-      <QuestionEditorModal
-        isOpen={isQuestionEditorOpen}
-        onClose={() => setIsQuestionEditorOpen(false)}
-        chapters={chapters}
-        onSaveChapters={handleSaveCustomChapters}
-        onResetDefaults={handleResetDefaultChapters}
+      <PinModal isOpen={isPinOpen} onClose={() => setIsPinOpen(false)} onUnlock={handleUnlockTeacher} />
+      <TeacherPanel
+        isOpen={isTeacherPanelOpen}
+        onClose={() => setIsTeacherPanelOpen(false)}
+        sheetId={sheetId}
+        onConnectSheet={handleConnectSheet}
+        onDisconnectSheet={handleDisconnectSheet}
+        quizTitle={quiz.title}
+        questions={quiz.questions}
+        quizSource={quiz.source}
+        isQuizLoading={isQuizLoading}
+        onReloadQuiz={() => loadQuiz(sheetId)}
+        onOpenQR={() => setIsQROpen(true)}
+        onStartTestPlay={() => handleStartGame(true)}
+        onExportCSV={exportRecordsToCSV}
+        onLock={handleLockTeacher}
+      />
+      {/* QR은 선생님 메뉴 위에 떠야 하므로 뒤에 둠 */}
+      <QRCodeModal isOpen={isQROpen} onClose={() => setIsQROpen(false)} url={studentUrl} />
+      <RankingModal
+        isOpen={isRankingOpen}
+        onClose={() => setIsRankingOpen(false)}
+        sheetId={sheetId}
+        chapterTitle={quiz.title}
+        nickname={nickname}
+        isTeacher={isTeacher}
       />
     </div>
   );

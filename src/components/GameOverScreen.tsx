@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
-import { Trophy, RotateCcw, Home, Sparkles, FileSpreadsheet, CheckCircle2, Download, Trash2 } from 'lucide-react';
-import { getLeaderboard, getStudentStats, exportRecordsToCSV, getWebhookUrl, saveWebhookUrl, deleteNicknameRecord } from '../utils/storage';
+import { Trophy, RotateCcw, Home, Sparkles } from 'lucide-react';
+import { LeaderboardEntry } from '../types/game';
+import { getStudentStats } from '../utils/storage';
+import { RankingList } from './RankingList';
+
+export type SyncStatus = 'none' | 'saving' | 'saved' | 'error';
 
 interface GameOverScreenProps {
   nickname: string;
@@ -8,9 +12,21 @@ interface GameOverScreenProps {
   correctCount: number;
   maxCombo: number;
   chapterTitle: string;
+  isTestPlay: boolean;
+  /** null = 아직 불러오는 중 */
+  ranking: LeaderboardEntry[] | null;
+  rankingSource: 'sheet' | 'local';
+  syncStatus: SyncStatus;
   onRetry: () => void;
   onGoHome: () => void;
 }
+
+const SYNC_MESSAGE: Record<SyncStatus, { text: string; className: string }> = {
+  none: { text: '📱 이 기기에 저장됨 (구글 시트 미연결)', className: 'text-zinc-500' },
+  saving: { text: '📤 반 기록에 저장하는 중…', className: 'text-blue-600' },
+  saved: { text: '✅ 반 기록(구글 시트)에 저장됨', className: 'text-emerald-700' },
+  error: { text: '⚠️ 반 기록 저장을 확인하지 못했어요. 인터넷을 확인해 주세요.', className: 'text-red-600' },
+};
 
 export const GameOverScreen: React.FC<GameOverScreenProps> = ({
   nickname,
@@ -18,30 +34,18 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
   correctCount,
   maxCombo,
   chapterTitle,
+  isTestPlay,
+  ranking,
+  rankingSource,
+  syncStatus,
   onRetry,
   onGoHome,
 }) => {
-  const [activeTab, setActiveTab] = useState<'summary' | 'ranking' | 'sheets'>('summary');
-  const [webhookInput, setWebhookInput] = useState(getWebhookUrl());
-  const [webhookSaved, setWebhookSaved] = useState(false);
-  const [, setRefreshKey] = useState(0);
+  const [activeTab, setActiveTab] = useState<'summary' | 'ranking'>('summary');
 
-  const leaderboard = getLeaderboard();
-  const studentStats = getStudentStats(nickname);
-  const isNewRecord = finalScore >= studentStats.personalBest && finalScore > 0;
-
-  const handleSaveWebhook = () => {
-    saveWebhookUrl(webhookInput.trim());
-    setWebhookSaved(true);
-    setTimeout(() => setWebhookSaved(false), 2000);
-  };
-
-  const handleDeleteRecord = (nick: string) => {
-    if (confirm(`'${nick}' 학생의 기록을 랭킹에서 영구 삭제하시겠습니까?`)) {
-      deleteNicknameRecord(nick);
-      setRefreshKey((k) => k + 1);
-    }
-  };
+  const studentStats = ranking ? getStudentStats(nickname, ranking) : null;
+  const isNewRecord = !isTestPlay && !!studentStats && finalScore > 0 && finalScore >= studentStats.personalBest;
+  const sync = SYNC_MESSAGE[syncStatus];
 
   return (
     <div className="relative w-full h-full min-h-[100dvh] overflow-y-auto bg-white flex flex-col items-center justify-between p-3 sm:p-4 text-zinc-900 select-none">
@@ -49,17 +53,23 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
         {/* Header with celebration banner */}
         <div className="text-center mb-3">
           <div className="inline-flex items-center gap-1 px-3 py-0.5 bg-yellow-100 border-2 border-zinc-900 rounded-full text-zinc-900 text-xs font-doodle font-bold mb-1 shadow-[1.5px_1.5px_0px_#18181b]">
-            <Trophy className="w-3.5 h-3.5 text-amber-500" />
-            <span>수업 활동 완료!</span>
+            {!isTestPlay && <Trophy className="w-3.5 h-3.5 text-amber-500" />}
+            <span>{isTestPlay ? '🧪 선생님 테스트 플레이' : '수업 활동 완료!'}</span>
           </div>
           <h2 className="text-2xl font-doodle font-bold text-zinc-950">
-            <span className="text-blue-600">{nickname}</span> 학생 결과
+            {isTestPlay ? (
+              '테스트 결과'
+            ) : (
+              <>
+                <span className="text-blue-600">{nickname}</span> 학생 결과
+              </>
+            )}
           </h2>
           <p className="text-zinc-500 font-doodle text-xs mt-0.5">{chapterTitle}</p>
         </div>
 
-        {/* Tab Navigation (Summary, Ranking, Sheets) */}
-        <div className="flex items-center gap-1 p-1 bg-zinc-100 rounded-2xl mb-3 border-2 border-zinc-900 shadow-[1.5px_1.5px_0px_#18181b]">
+        {/* Tab Navigation (Summary, Ranking) — 테스트 플레이는 랭킹이 없으니 숨김 */}
+        <div hidden={isTestPlay} className="flex items-center gap-1 p-1 bg-zinc-100 rounded-2xl mb-3 border-2 border-zinc-900 shadow-[1.5px_1.5px_0px_#18181b]">
           <button
             onClick={() => setActiveTab('summary')}
             className={`flex-1 py-1 rounded-xl text-xs font-doodle font-bold transition-all ${
@@ -80,16 +90,6 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
           >
             🏆 TOP 10
           </button>
-          <button
-            onClick={() => setActiveTab('sheets')}
-            className={`flex-1 py-1 rounded-xl text-xs font-doodle font-bold transition-all ${
-              activeTab === 'sheets'
-                ? 'bg-yellow-300 text-zinc-950 border-2 border-zinc-900 shadow-[1px_1px_0px_#18181b]'
-                : 'text-zinc-600 hover:text-zinc-950'
-            }`}
-          >
-            📊 시트 연동
-          </button>
         </div>
 
         {/* TAB 1: SUMMARY */}
@@ -107,6 +107,9 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 {finalScore.toLocaleString()}
                 <span className="text-lg font-bold text-zinc-600 ml-1 font-doodle">점</span>
               </div>
+              <p className={`text-[11px] font-doodle font-bold mt-1 ${isTestPlay ? 'text-amber-700' : sync.className}`}>
+                {isTestPlay ? '테스트 플레이는 기록이 남지 않아요' : sync.text}
+              </p>
             </div>
 
             {/* Metrics Grid */}
@@ -119,16 +122,31 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 <span className="text-[10px] text-zinc-500 font-doodle block">최대 콤보</span>
                 <span className="text-base font-bold text-orange-500 font-doodle">{maxCombo}연속</span>
               </div>
-              <div className="bg-white border-2 border-zinc-900 rounded-xl p-2 text-center shadow-[1.5px_1.5px_0px_#18181b]">
-                <span className="text-[10px] text-zinc-500 font-doodle block">내 최고점</span>
-                <span className="text-base font-bold text-blue-600 font-doodle">{studentStats.personalBest.toLocaleString()}점</span>
-              </div>
-              <div className="bg-white border-2 border-zinc-900 rounded-xl p-2 text-center shadow-[1.5px_1.5px_0px_#18181b]">
-                <span className="text-[10px] text-zinc-500 font-doodle block">학급 순위</span>
-                <span className="text-base font-bold text-purple-600 font-doodle">
-                  {studentStats.rank}위 <span className="text-[10px] text-zinc-400 font-normal">/ {studentStats.totalPlayers}명</span>
-                </span>
-              </div>
+              {!isTestPlay && (
+                <>
+                  <div className="bg-white border-2 border-zinc-900 rounded-xl p-2 text-center shadow-[1.5px_1.5px_0px_#18181b]">
+                    <span className="text-[10px] text-zinc-500 font-doodle block">내 최고점</span>
+                    <span className="text-base font-bold text-blue-600 font-doodle">
+                      {studentStats ? `${studentStats.personalBest.toLocaleString()}점` : '…'}
+                    </span>
+                  </div>
+                  <div className="bg-white border-2 border-zinc-900 rounded-xl p-2 text-center shadow-[1.5px_1.5px_0px_#18181b]">
+                    <span className="text-[10px] text-zinc-500 font-doodle block">
+                      {rankingSource === 'sheet' ? '학급 순위' : '이 기기 순위'}
+                    </span>
+                    <span className="text-base font-bold text-purple-600 font-doodle">
+                      {studentStats ? (
+                        <>
+                          {studentStats.rank}위{' '}
+                          <span className="text-[10px] text-zinc-400 font-normal">/ {studentStats.totalPlayers}명</span>
+                        </>
+                      ) : (
+                        '…'
+                      )}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Feedback Message */}
@@ -142,112 +160,15 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
         {activeTab === 'ranking' && (
           <div className="space-y-2.5">
             <div className="flex items-center justify-between text-[11px] text-zinc-500 px-1 font-doodle">
-              <span>동일 학생 최고점 1개만 반영</span>
-              <span>총 {leaderboard.length}명 참여</span>
+              <span>{rankingSource === 'sheet' ? '📊 반 전체 (구글 시트)' : '📱 이 기기 기록만'}</span>
+              <span>{ranking ? `총 ${ranking.length}명 참여` : ''}</span>
             </div>
-
-            <div className="max-h-52 overflow-y-auto space-y-1.5 pr-0.5">
-              {leaderboard.length === 0 ? (
-                <div className="p-5 text-center text-zinc-400 text-xs font-doodle">
-                  아직 기록이 없습니다. 게임을 완료하면 순위가 등록됩니다!
-                </div>
+            <div className="max-h-52 overflow-y-auto pr-0.5">
+              {ranking ? (
+                <RankingList entries={ranking} highlightName={nickname} />
               ) : (
-                leaderboard.slice(0, 10).map((entry, index) => {
-                  const isCurrent = entry.nickname.toLowerCase() === nickname.toLowerCase();
-                  let rankBadge = (
-                    <span className="w-5 h-5 flex items-center justify-center font-bold text-xs text-zinc-500 font-mono">
-                      {index + 1}
-                    </span>
-                  );
-                  if (index === 0) rankBadge = <span className="text-sm">🥇</span>;
-                  else if (index === 1) rankBadge = <span className="text-sm">🥈</span>;
-                  else if (index === 2) rankBadge = <span className="text-sm">🥉</span>;
-
-                  return (
-                    <div
-                      key={entry.nickname}
-                      className={`flex items-center justify-between p-2 rounded-xl text-xs border-2 border-zinc-900 font-doodle transition-all ${
-                        isCurrent
-                          ? 'bg-yellow-100 shadow-[1.5px_1.5px_0px_#18181b] font-bold'
-                          : 'bg-white shadow-[1px_1px_0px_#18181b] text-zinc-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        {rankBadge}
-                        <span className="text-zinc-950 font-bold text-xs truncate max-w-[90px]">{entry.nickname}</span>
-                        {isCurrent && (
-                          <span className="text-[9px] bg-zinc-950 text-white px-1 rounded font-bold shrink-0">
-                            나
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-zinc-500 text-[10px]">
-                          {entry.correctCount}정답
-                        </span>
-                        <span className="font-bold text-xs text-zinc-950">
-                          {entry.score.toLocaleString()}점
-                        </span>
-                        <button
-                          onClick={() => handleDeleteRecord(entry.nickname)}
-                          className="p-1 text-zinc-300 hover:text-red-500 rounded transition-colors"
-                          title="이 닉네임 기록 삭제 (선생님 전용)"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
+                <div className="p-5 text-center text-zinc-500 text-xs font-doodle">랭킹 불러오는 중...</div>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: GOOGLE SHEETS & CSV */}
-        {activeTab === 'sheets' && (
-          <div className="space-y-2.5">
-            <div className="bg-zinc-50 border-2 border-zinc-900 rounded-xl p-2.5 space-y-1.5 shadow-[1.5px_1.5px_0px_#18181b]">
-              <div className="flex items-center gap-1.5">
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                <span className="text-xs font-doodle font-bold text-zinc-900">구글 시트 연동 (선생님용)</span>
-              </div>
-              <p className="text-[10px] text-zinc-600 font-doodle leading-relaxed">
-                학생들이 게임을 마칠 때마다 구글 스프레드시트에 [시간, 이름, 점수, 정답수, 최대콤보]가
-                자동으로 1행씩 실시간 누적됩니다 (300명 이상 무제한 지원).
-              </p>
-
-              <div className="flex gap-1.5">
-                <input
-                  type="text"
-                  value={webhookInput}
-                  onChange={(e) => setWebhookInput(e.target.value)}
-                  placeholder="Apps Script 웹 앱 URL"
-                  className="flex-1 bg-white border-2 border-zinc-900 rounded-lg px-2 py-1 text-[11px] text-zinc-900 font-doodle placeholder-zinc-400 outline-none"
-                />
-                <button
-                  onClick={handleSaveWebhook}
-                  className="px-2.5 py-1 bg-zinc-900 text-white rounded-lg text-xs font-doodle font-bold active:scale-95 flex items-center gap-1"
-                >
-                  {webhookSaved ? <CheckCircle2 className="w-3 h-3 text-emerald-400" /> : null}
-                  <span>저장</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Quick CSV Export button */}
-            <div className="flex items-center justify-between p-2.5 bg-white border-2 border-zinc-900 rounded-xl shadow-[1.5px_1.5px_0px_#18181b]">
-              <div>
-                <span className="text-xs font-doodle font-bold text-zinc-900 block">전체 기록 CSV 다운로드</span>
-                <span className="text-[10px] text-zinc-500 font-doodle">엑셀 파일로 바로 저장</span>
-              </div>
-              <button
-                onClick={exportRecordsToCSV}
-                className="flex items-center gap-1 px-2.5 py-1 bg-zinc-100 hover:bg-zinc-200 border-2 border-zinc-900 rounded-lg text-xs font-doodle font-bold text-zinc-900 active:scale-95 transition-all shadow-[1px_1px_0px_#18181b]"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>CSV</span>
-              </button>
             </div>
           </div>
         )}

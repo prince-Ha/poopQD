@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { CharacterSkin } from '../types/game';
-import { Play, QrCode, Trophy, Clock, AlertCircle, Edit3, User, Dices } from 'lucide-react';
+import { Play, Trophy, Clock, AlertCircle, User, Dices, Lock, BookOpen } from 'lucide-react';
 import giyeongNormalSrc from '../assets/giyeong_normal.jpg';
 import pikaNormalSrc from '../assets/pika_normal.jpg';
 import ganadiNormalSrc from '../assets/ganadi_normal.jpg';
@@ -12,12 +12,14 @@ interface StartScreenProps {
   onChangeNickname: (name: string) => void;
   characterSkin: CharacterSkin;
   onChangeSkin: (skin: CharacterSkin) => void;
+  chapterTitle: string;
+  questionCount: number;
+  isQuizLoading: boolean;
   timeLimit: number;
-  onChangeTimeLimit: (seconds: number) => void;
+  isTeacher: boolean;
   onStartGame: () => void;
-  onOpenQR: () => void;
+  onOpenTeacher: () => void;
   onOpenLeaderboard: () => void;
-  onOpenQuestionEditor: () => void;
 }
 
 export const StartScreen: React.FC<StartScreenProps> = ({
@@ -25,12 +27,14 @@ export const StartScreen: React.FC<StartScreenProps> = ({
   onChangeNickname,
   characterSkin,
   onChangeSkin,
+  chapterTitle,
+  questionCount,
+  isQuizLoading,
   timeLimit,
-  onChangeTimeLimit,
+  isTeacher,
   onStartGame,
-  onOpenQR,
+  onOpenTeacher,
   onOpenLeaderboard,
-  onOpenQuestionEditor,
 }) => {
   const [errorShake, setErrorShake] = useState(false);
   // 🎲 랜덤 뽑기 중에 잠깐씩 하이라이트되는 캐릭터
@@ -45,7 +49,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
   const handleStart = (e: React.FormEvent) => {
     e.preventDefault();
-    if (rollingSkin) return;
+    if (rollingSkin || isQuizLoading) return;
     if (!nickname.trim()) {
       setErrorShake(true);
       setTimeout(() => setErrorShake(false), 500);
@@ -85,35 +89,25 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
   return (
     <div className="relative w-full h-full min-h-[100dvh] flex flex-col items-center justify-between p-3 sm:p-4 text-zinc-900 select-none bg-white">
-      {/* Top action row: QR Code, Question Editor, Leaderboard */}
+      {/* Top action row: 선생님 메뉴, 랭킹 */}
       <div className="w-full max-w-sm flex items-center justify-between gap-1.5 pt-1 z-10">
         <button
-          onClick={onOpenQR}
+          onClick={onOpenTeacher}
           className="flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-zinc-50 border-2 border-zinc-900 rounded-xl text-xs text-zinc-900 font-doodle font-bold transition-all shadow-[2px_2px_0px_#18181b] active:translate-x-[1px] active:translate-y-[1px]"
-          title="학생들에게 보여줄 접속용 QR 코드 띄우기"
+          title="선생님 메뉴 (QR, 구글 시트, 문제, 테스트)"
         >
-          <QrCode className="w-3.5 h-3.5" />
-          <span>수업용 QR</span>
+          {isTeacher ? <span>👩‍🏫</span> : <Lock className="w-3.5 h-3.5" />}
+          <span>{isTeacher ? '선생님 메뉴' : '선생님'}</span>
         </button>
 
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={onOpenQuestionEditor}
-            className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-zinc-50 border-2 border-zinc-900 rounded-xl text-xs text-zinc-900 font-doodle font-bold transition-all shadow-[2px_2px_0px_#18181b] active:translate-x-[1px] active:translate-y-[1px]"
-            title="선생님 문제 편집 (질문/정답/오답 변경)"
-          >
-            <Edit3 className="w-3.5 h-3.5 text-blue-600" />
-            <span>문제 편집</span>
-          </button>
-          <button
-            onClick={onOpenLeaderboard}
-            className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-zinc-50 border-2 border-zinc-900 rounded-xl text-xs text-zinc-900 font-doodle font-bold transition-all shadow-[2px_2px_0px_#18181b] active:translate-x-[1px] active:translate-y-[1px]"
-            title="학급 랭킹 및 기록"
-          >
-            <Trophy className="w-3.5 h-3.5 text-amber-500" />
-            <span>랭킹</span>
-          </button>
-        </div>
+        <button
+          onClick={onOpenLeaderboard}
+          className="flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-zinc-50 border-2 border-zinc-900 rounded-xl text-xs text-zinc-900 font-doodle font-bold transition-all shadow-[2px_2px_0px_#18181b] active:translate-x-[1px] active:translate-y-[1px]"
+          title="학급 랭킹"
+        >
+          <Trophy className="w-3.5 h-3.5 text-amber-500" />
+          <span>랭킹</span>
+        </button>
       </div>
 
       {/* Main Mobile Card */}
@@ -133,7 +127,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
             똥 피 하 기
           </h1>
           <div className="inline-block mt-2 px-3 py-0.5 bg-yellow-100 border border-zinc-800 rounded-full text-xs font-doodle font-bold text-zinc-900 shadow-[1px_1px_0px_#18181b]">
-            생식과 유전(용어 연습)
+            {chapterTitle}
           </div>
         </div>
 
@@ -218,46 +212,30 @@ export const StartScreen: React.FC<StartScreenProps> = ({
             </div>
           </div>
 
-          {/* 3. Duration Selector (5 min or 20 sec) */}
-          <div>
-            <label className="block text-xs font-doodle font-bold text-zinc-900 mb-1 flex items-center gap-1">
+          {/* 3. Play info: 시간은 학생 모두 동일 (선생님 테스트는 선생님 메뉴에서) */}
+          <div className="flex items-center justify-center gap-3 text-[11px] font-doodle font-bold text-zinc-600">
+            <span className="flex items-center gap-1">
               <Clock className="w-3.5 h-3.5 text-amber-500" />
-              <span>플레이 시간</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { sec: 300, label: '5분', desc: '정규 수업용 (분마다 똥 증가)' },
-                { sec: 20, label: '20초', desc: '빠른 테스트' },
-              ].map((opt) => (
-                <button
-                  key={opt.sec}
-                  type="button"
-                  onClick={() => onChangeTimeLimit(opt.sec)}
-                  className={`py-1.5 px-2 rounded-xl text-center border-2 border-zinc-900 transition-all ${
-                    timeLimit === opt.sec
-                      ? 'bg-zinc-900 text-white font-bold shadow-[2px_2px_0px_#18181b] translate-x-[1px] translate-y-[1px]'
-                      : 'bg-white text-zinc-700 shadow-[1.5px_1.5px_0px_#18181b] hover:bg-zinc-50'
-                  }`}
-                >
-                  <div className="font-doodle font-bold text-sm">{opt.label}</div>
-                  <div className="text-[9px] opacity-80 font-doodle">{opt.desc}</div>
-                </button>
-              ))}
-            </div>
+              {Math.floor(timeLimit / 60)}분 동안 (1분마다 똥 증가!)
+            </span>
+            <span className="flex items-center gap-1">
+              <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+              {isQuizLoading ? '문제 불러오는 중…' : `문제 ${questionCount}개`}
+            </span>
           </div>
 
           {/* 4. Big Start Button */}
           <button
             type="submit"
-            disabled={!nickname.trim() || rollingSkin !== null}
+            disabled={!nickname.trim() || rollingSkin !== null || isQuizLoading}
             className={`w-full py-3 rounded-2xl font-doodle font-bold text-xl flex items-center justify-center gap-1.5 border-3 border-zinc-900 transition-all ${
-              nickname.trim()
+              nickname.trim() && !isQuizLoading
                 ? 'bg-yellow-300 hover:bg-yellow-400 text-zinc-950 cursor-pointer shadow-[3px_3px_0px_#18181b] active:translate-x-[2px] active:translate-y-[2px] active:shadow-[1px_1px_0px_#18181b]'
                 : 'bg-zinc-200 text-zinc-400 cursor-not-allowed border-zinc-400 shadow-none'
             }`}
           >
             <Play className="w-5 h-5 fill-current" />
-            <span>게임 시작하기!</span>
+            <span>{isQuizLoading ? '문제 준비 중…' : '게임 시작하기!'}</span>
           </button>
         </form>
       </div>

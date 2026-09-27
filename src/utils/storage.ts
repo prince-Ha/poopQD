@@ -1,9 +1,7 @@
 import { CharacterSkin, GameRecord, LeaderboardEntry } from '../types/game';
 
 const RECORDS_STORAGE_KEY = 'science_game_records_v1';
-const WEBHOOK_STORAGE_KEY = 'science_game_webhook_url';
 const LAST_NICKNAME_KEY = 'science_game_last_nickname';
-const LAST_CHAPTER_KEY = 'science_game_last_chapter';
 const SOUND_MUTED_KEY = 'science_game_sound_muted';
 
 export function saveLastNickname(name: string) {
@@ -20,20 +18,6 @@ export function getLastNickname(): string {
   }
 }
 
-export function saveLastChapter(chapterId: string) {
-  try {
-    localStorage.setItem(LAST_CHAPTER_KEY, chapterId);
-  } catch {}
-}
-
-export function getLastChapter(): string {
-  try {
-    return localStorage.getItem(LAST_CHAPTER_KEY) || 'bio-genetics';
-  } catch {
-    return 'bio-genetics';
-  }
-}
-
 export function saveSoundMuted(muted: boolean) {
   try {
     localStorage.setItem(SOUND_MUTED_KEY, muted ? '1' : '0');
@@ -45,20 +29,6 @@ export function getSoundMuted(): boolean {
     return localStorage.getItem(SOUND_MUTED_KEY) === '1';
   } catch {
     return false;
-  }
-}
-
-export function saveWebhookUrl(url: string) {
-  try {
-    localStorage.setItem(WEBHOOK_STORAGE_KEY, url);
-  } catch {}
-}
-
-export function getWebhookUrl(): string {
-  try {
-    return localStorage.getItem(WEBHOOK_STORAGE_KEY) || '';
-  } catch {
-    return '';
   }
 }
 
@@ -92,12 +62,6 @@ export function saveGameRecord(record: Omit<GameRecord, 'id' | 'timestamp'>): Ga
     localStorage.setItem(RECORDS_STORAGE_KEY, JSON.stringify(records));
   } catch {}
 
-  // Push to Google Sheets webhook if configured
-  const webhookUrl = getWebhookUrl();
-  if (webhookUrl && webhookUrl.startsWith('http')) {
-    sendToGoogleSheets(webhookUrl, newRecord);
-  }
-
   return newRecord;
 }
 
@@ -117,20 +81,22 @@ export function clearAllRecords(): void {
 }
 
 /**
- * Calculates leaderboard:
+ * 이 기기에 저장된 기록으로 만든 랭킹 (구글 시트가 연결되지 않았을 때 사용)
  * Rule 16: "모든 플레이 기록은 그대로 보존한다... 그러나 랭킹에서는 닉네임별 최고점만 사용한다. 랭킹은 점수 높은 순서대로 정렬한다."
  */
-export function getLeaderboard(): LeaderboardEntry[] {
+export function getLeaderboard(chapterTitle?: string): LeaderboardEntry[] {
   const records = getAllRecords();
   const bestMap = new Map<string, LeaderboardEntry>();
 
   for (const r of records) {
     const nick = r.nickname.trim();
     if (!nick) continue;
+    if (chapterTitle && r.chapterTitle !== chapterTitle) continue;
 
-    const existing = bestMap.get(nick);
+    const key = nick.toLowerCase();
+    const existing = bestMap.get(key);
     if (!existing || r.score > existing.score) {
-      bestMap.set(nick, {
+      bestMap.set(key, {
         nickname: nick,
         score: r.score,
         correctCount: r.correctCount,
@@ -144,10 +110,12 @@ export function getLeaderboard(): LeaderboardEntry[] {
 }
 
 /**
- * Returns personal best score and class ranking for a specific nickname
+ * 랭킹 목록에서 내 최고점과 순위 찾기
  */
-export function getStudentStats(nickname: string): { personalBest: number; rank: number; totalPlayers: number } {
-  const leaderboard = getLeaderboard();
+export function getStudentStats(
+  nickname: string,
+  leaderboard: LeaderboardEntry[]
+): { personalBest: number; rank: number; totalPlayers: number } {
   const cleanNick = nickname.trim();
   const entryIndex = leaderboard.findIndex((item) => item.nickname.toLowerCase() === cleanNick.toLowerCase());
 
@@ -163,44 +131,19 @@ export function getStudentStats(nickname: string): { personalBest: number; rank:
 }
 
 /**
- * Send record to Google Sheets via Google Apps Script Web App
- */
-export async function sendToGoogleSheets(url: string, record: GameRecord): Promise<boolean> {
-  try {
-    await fetch(url, {
-      method: 'POST',
-      mode: 'no-cors', // Standard for Google Apps Script Web Apps to avoid CORS blocks
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        timestamp: record.timestamp,
-        nickname: record.nickname,
-        chapter: record.chapterTitle,
-        score: record.score,
-        correctCount: record.correctCount,
-        maxCombo: record.maxCombo,
-      }),
-    });
-    return true;
-  } catch (err) {
-    console.warn('Google Sheets sync warning:', err);
-    return false;
-  }
-}
-
-/**
  * Export all gameplay logs to CSV file for the teacher
  */
-export function exportRecordsToCSV(): void {
+export function exportRecordsToCSV(): boolean {
   const records = getAllRecords();
-  if (records.length === 0) return;
+  if (records.length === 0) return false;
 
   const header = ['기록일시', '학번/이름', '단원', '최종점수', '맞힌정답수', '최대콤보', '설정시간(초)'];
+  // 엑셀이 '=' 등으로 시작하는 글자를 수식으로 읽지 않게
+  const cell = (text: string) => `"${text.replace(/^([=+\-@])/, "'$1").replace(/"/g, '""')}"`;
   const rows = records.map((r) => [
     `"${r.timestamp}"`,
-    `"${r.nickname.replace(/"/g, '""')}"`,
-    `"${r.chapterTitle.replace(/"/g, '""')}"`,
+    cell(r.nickname),
+    cell(r.chapterTitle),
     r.score,
     r.correctCount,
     r.maxCombo,
@@ -216,6 +159,8 @@ export function exportRecordsToCSV(): void {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return true;
 }
 
 const LAST_SKIN_KEY = 'science_game_last_skin';

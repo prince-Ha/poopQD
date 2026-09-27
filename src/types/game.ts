@@ -66,6 +66,7 @@ export interface GameRecord {
   correctCount: number;
   maxCombo: number;
   timeLimit: number;
+  character?: CharacterSkin;
 }
 
 export interface LeaderboardEntry {

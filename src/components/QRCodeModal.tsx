@@ -5,18 +5,18 @@ import { X, Copy, Check, Smartphone } from 'lucide-react';
 interface QRCodeModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** 학생이 접속할 주소 (구글 시트가 연결돼 있으면 ?sheet=ID 포함) */
+  url: string;
 }
 
-export const QRCodeModal: React.FC<QRCodeModalProps> = ({ isOpen, onClose }) => {
+export const QRCodeModal: React.FC<QRCodeModalProps> = ({ isOpen, onClose, url }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const [currentUrl, setCurrentUrl] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
+  const currentUrl = url;
 
   useEffect(() => {
     if (!isOpen) return;
-
-    const url = window.location.href;
-    setCurrentUrl(url);
+    setQrDataUrl('');
 
     QRCode.toDataURL(url, {
       width: 480,
@@ -28,7 +28,7 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({ isOpen, onClose }) => 
     })
       .then((dataUri) => setQrDataUrl(dataUri))
       .catch((err) => console.error(err));
-  }, [isOpen]);
+  }, [isOpen, url]);
 
   if (!isOpen) return null;
 
@@ -56,7 +56,7 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({ isOpen, onClose }) => 
           <Smartphone className="w-4 h-4 text-zinc-900" />
           <span>수업용 QR 코드 (학생 스마트폰 접속)</span>
         </div>
-        <h2 className="text-3xl sm:text-4xl font-pen font-bold text-zinc-950 mb-1">
+        <h2 className="text-3xl sm:text-4xl font-pen font-bold text-zinc-950 mb-1 break-keep">
           카메라로 QR코드를 스캔하세요!
         </h2>
         <p className="text-zinc-600 font-doodle text-xs sm:text-sm mb-4">

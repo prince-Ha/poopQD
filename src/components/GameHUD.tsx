@@ -18,6 +18,7 @@ interface GameHUDProps {
   onGoHome: () => void;
   showHealAlert: boolean;
   stageAlert?: string | null;
+  isTestPlay?: boolean;
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -35,6 +36,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onGoHome,
   showHealAlert: _showHealAlert,
   stageAlert,
+  isTestPlay = false,
 }) => {
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
@@ -79,7 +81,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 : 'bg-zinc-100 text-zinc-900'
             }`}
           >
-            ⏱ {timeFormatted}
+            {isTestPlay ? '🧪' : '⏱'} {timeFormatted}
           </div>
         </div>
 
