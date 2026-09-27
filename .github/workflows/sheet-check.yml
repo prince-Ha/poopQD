@@ -38,3 +38,14 @@ jobs:
           echo "── 랭킹 불러오기 (?action=ranking)"
           curl -sSL --max-time 60 "$URL?action=ranking" -o ranking.txt
           jq -e '.ok == true' ranking.txt > /dev/null && echo "✅ 랭킹 $(jq '.ranking | length' ranking.txt)명"
+
+      - name: 게임 사이트 열리는지 확인
+        run: |
+          CODE=$(curl -sSL --max-time 60 -o site.html -w "%{http_code}" https://prince-ha.github.io/poopQD/)
+          echo "HTTP $CODE"
+          if [ "$CODE" = "200" ] && grep -q 'id="root"' site.html; then
+            echo "✅ 게임 사이트 열림: https://prince-ha.github.io/poopQD/"
+          else
+            echo "❌ 게임 사이트가 아직 안 열려요 (배포 전이거나 반영 중)"
+            exit 1
+          fi

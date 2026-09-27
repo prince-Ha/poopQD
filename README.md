@@ -31,14 +31,13 @@
 선생님 비밀번호와 기본 시트 ID는 [`src/config.ts`](src/config.ts)에서 바꿀 수 있습니다.
 시트 스크립트 원본은 [`google-apps-script/Code.gs`](google-apps-script/Code.gs)에 있습니다.
 
-## 배포 (GitHub Pages)
+## 미리보기와 배포
 
-`main` 브랜치에 올리면 GitHub Actions가 자동으로 빌드해서 배포합니다.
-
-1. 저장소 Settings → Pages → Source를 **GitHub Actions**로 선택
-2. `main`에 push → 몇 분 뒤 `https://<계정>.github.io/poopQD/` 에서 접속
-
-(무료 계정은 저장소가 public이어야 Pages를 쓸 수 있습니다.)
+1. **미리보기**: `npm run build:artifact` → `dist-artifact/poop-quiz.html` 한 장을 Claude 아티팩트로 올려서 확인
+   (미리보기에서는 외부 접속이 막혀 있어 구글 시트 없이 '이 기기 기록' 모드로 동작)
+2. **배포**: 마음에 들면 GitHub Actions의 `GitHub Pages 배포`를 수동 실행 (Claude에게 "배포해줘")
+   → https://prince-ha.github.io/poopQD/
+3. **시트 확인**: Actions의 `구글 시트 연결 확인`이 로그인 없이 시트가 열리는지 검사합니다.
 
 ## 개발
 
