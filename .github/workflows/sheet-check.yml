@@ -1,0 +1,40 @@
+# 구글 시트(Apps Script 웹 앱)가 로그인 없이 열리는지 확인
+# - 읽기만 함 (기록을 쓰지 않음)
+# - Actions 탭 → '구글 시트 연결 확인' → Run workflow 로 언제든 다시 돌릴 수 있음
+name: 구글 시트 연결 확인
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - src/config.ts
+      - .github/workflows/sheet-check.yml
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: 시트에서 문제·랭킹 읽어 보기
+        run: |
+          ID=$(grep -oP "DEFAULT_SHEET_ID = '\K[^']+" src/config.ts || true)
+          if [ -z "$ID" ]; then echo "config.ts에 시트 ID가 없어요"; exit 1; fi
+          URL="https://script.google.com/macros/s/$ID/exec"
+
+          echo "── 문제 불러오기 (?action=questions)"
+          curl -sSL --max-time 60 -o questions.txt -w "HTTP %{http_code}, 최종 주소: %{url_effective}\n" "$URL?action=questions"
+          head -c 400 questions.txt; echo
+          if jq -e '.ok == true' questions.txt > /dev/null 2>&1; then
+            echo "✅ 로그인 없이 열림 · 단원: $(jq -r '.title' questions.txt) · 문제 $(jq '.questions | length' questions.txt)개"
+          else
+            echo "❌ JSON이 아니에요. 로그인 화면이 왔다면 '액세스: 모든 사용자'가 아니거나 학교 계정 제한이에요."
+            grep -o '<title>[^<]*</title>' questions.txt || true
+            exit 1
+          fi
+
+          echo "── 랭킹 불러오기 (?action=ranking)"
+          curl -sSL --max-time 60 "$URL?action=ranking" -o ranking.txt
+          jq -e '.ok == true' ranking.txt > /dev/null && echo "✅ 랭킹 $(jq '.ranking | length' ranking.txt)명"
