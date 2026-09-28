@@ -29,3 +29,9 @@ export const HITBOX = {
 
 /** 점수 글자 등이 뜨는 높이 (머리 위) */
 export const PLAYER_TEXT_Y = FLOOR_Y - NECK_FROM_FLOOR - HEAD_MAX_H - 10;
+
+/** 양 끝 쉼터 폭: 여기에는 단어 카드도 똥도 떨어지지 않음 (문제 읽고 생각하는 안전지대) */
+export const SHELTER_W = 72;
+/** 카드·똥이 떨어지는 가운데 구역 (쉼터에서 10px 더 띄움, 큰 얼굴이 살짝 삐져나와도 안 닿게) */
+export const DROP_MIN_X = SHELTER_W + 10;
+export const DROP_MAX_X = V_WIDTH - SHELTER_W - 10;

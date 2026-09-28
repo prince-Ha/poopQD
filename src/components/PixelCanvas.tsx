@@ -12,6 +12,7 @@ import {
   HEAD_MAX_W,
   HEAD_MAX_H,
   HEAD_NECK_OVERLAP,
+  SHELTER_W,
 } from '../data/player';
 
 interface PixelCanvasProps {
@@ -191,30 +192,28 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
 function drawDoodleFloorWithShelters(ctx: CanvasRenderingContext2D, width: number, floorY: number) {
   ctx.save();
 
-  // Left Safe Shelter Highlight (x: 0 ~ 72)
-  ctx.fillStyle = '#f0fdf4';
-  ctx.fillRect(0, floorY - 3, 72, 70);
+  // 양 끝 쉼터: 카드도 똥도 떨어지지 않는 안전지대 (위에서 바닥까지 연한 초록 띠)
+  for (const x0 of [0, width - SHELTER_W]) {
+    ctx.fillStyle = 'rgba(220, 252, 231, 0.6)';
+    ctx.fillRect(x0, 0, SHELTER_W, floorY + 67);
+  }
   ctx.strokeStyle = '#86efac';
   ctx.lineWidth = 1.5;
-  ctx.setLineDash([4, 4]);
-  ctx.strokeRect(4, floorY - 2, 64, 60);
-  ctx.setLineDash([]);
-
-  // Right Safe Shelter Highlight (x: 408 ~ 480)
-  ctx.fillStyle = '#f0fdf4';
-  ctx.fillRect(width - 72, floorY - 3, 72, 70);
-  ctx.strokeStyle = '#86efac';
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([4, 4]);
-  ctx.strokeRect(width - 68, floorY - 2, 64, 60);
+  ctx.setLineDash([6, 6]);
+  for (const lineX of [SHELTER_W, width - SHELTER_W]) {
+    ctx.beginPath();
+    ctx.moveTo(lineX, 0);
+    ctx.lineTo(lineX, floorY + 67);
+    ctx.stroke();
+  }
   ctx.setLineDash([]);
 
   // Safe Zone Labels
   ctx.fillStyle = '#16a34a';
   ctx.font = 'bold 11px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('🛡️쉼터', 36, floorY + 22);
-  ctx.fillText('🛡️쉼터', width - 36, floorY + 22);
+  ctx.fillText('🛡️쉼터', SHELTER_W / 2, floorY + 22);
+  ctx.fillText('🛡️쉼터', width - SHELTER_W / 2, floorY + 22);
 
   // Main Floor Line
   ctx.strokeStyle = '#18181b';

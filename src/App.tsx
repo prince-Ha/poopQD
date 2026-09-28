@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FallingItem, Particle, FloatingText, CharacterAction, QuizQuestion, CharacterSkin, LeaderboardEntry } from './types/game';
 import { INITIAL_CHAPTERS } from './data/chapters';
 import { STUDENT_TIME_LIMIT, TEST_TIME_LIMIT, FEVER_COMBO, FEVER_DURATION } from './config';
-import { V_WIDTH, PLAYER_W, PLAYER_START_X, HITBOX, PLAYER_TEXT_Y } from './data/player';
+import { V_WIDTH, PLAYER_W, PLAYER_START_X, HITBOX, PLAYER_TEXT_Y, DROP_MIN_X, DROP_MAX_X } from './data/player';
 import { PixelCanvas } from './components/PixelCanvas';
 import { GameHUD } from './components/GameHUD';
 import { TouchControls } from './components/TouchControls';
@@ -510,6 +510,8 @@ export default function App() {
           item.y += item.speed * dt;
           if (item.wobbleSpeed > 0) {
             item.x += Math.sin(state.totalElapsed * item.wobbleSpeed + item.wobbleOffset) * 0.7;
+            // 살랑거려도 쉼터로는 못 들어가게
+            item.x = Math.max(DROP_MIN_X, Math.min(DROP_MAX_X - item.width, item.x));
           }
 
           // Check collision with player
@@ -595,7 +597,8 @@ export default function App() {
     if (!state.currentQuestion) return;
     const cardW = 124;
     const cardH = 42;
-    const spawnX = 14 + Math.random() * (V_WIDTH - cardW - 28);
+    // 양 끝 쉼터에는 카드가 떨어지지 않음
+    const spawnX = DROP_MIN_X + Math.random() * (DROP_MAX_X - DROP_MIN_X - cardW);
 
     // 55% chance for correct answer, 45% for wrong distractor
     const isCorrect = Math.random() < 0.55;
@@ -622,13 +625,11 @@ export default function App() {
     });
   };
 
-  // Spawn Poop Obstacle (Stage-scaled speed, Safe shelters on left & right)
+  // Spawn Poop Obstacle (Stage-scaled speed, 양 끝 쉼터 제외)
   const spawnPoopItem = (state: typeof gameStateRef.current, stage: number) => {
     const poopSize = 46;
-    // Safe shelters on left (0~72) and right (408~480) - no poop drops here!
-    const SHELTER_MARGIN = 75;
-    const minX = SHELTER_MARGIN;
-    const maxX = V_WIDTH - SHELTER_MARGIN - poopSize;
+    const minX = DROP_MIN_X;
+    const maxX = DROP_MAX_X - poopSize;
     const spawnX = minX + Math.random() * (maxX - minX);
 
     // Speed progression per stage:
